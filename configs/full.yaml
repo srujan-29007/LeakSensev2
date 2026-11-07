@@ -1,0 +1,14 @@
+# Full run: every case scenario. Feature settings come from reports/baseline_choice.md (M4).
+name: full
+seed: 0
+n_scenarios: null
+features:
+  slot: tod
+  baseline_days: 14
+  estimator: mean
+  window: 48
+  stride: 24
+  max_lag_days: null
+  max_windows_per_case: 32
+  pre_guard_steps: 0
+  snr_holdout_days: 3.0

@@ -1,0 +1,15 @@
+# Laptop-CPU subset: 60 case scenarios (34 and 229 always in), same feature settings as full.
+name: cpu_small
+seed: 0
+n_scenarios: 60
+include_scenarios: [34, 229]
+features:
+  slot: tod
+  baseline_days: 14
+  estimator: mean
+  window: 48
+  stride: 24
+  max_lag_days: null
+  max_windows_per_case: 32
+  pre_guard_steps: 0
+  snr_holdout_days: 3.0

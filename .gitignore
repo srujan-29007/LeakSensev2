@@ -1,0 +1,25 @@
+# Local configuration (contains the dataset path)
+.env
+.claude
+
+# Dataset and generated artifacts: never commit
+/data/
+/artifacts/
+/reports/raw/
+*.npz
+*.npy
+*.parquet
+*.pt
+*.pkl
+
+# Old hackathon code, kept locally for reference only
+reference/
+
+node_modules/
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/

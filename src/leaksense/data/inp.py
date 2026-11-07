@@ -160,7 +160,9 @@ def merge_split_pipes(net: InpNetwork) -> dict[str, MergedPipe]:
         leak_nodes = []
         for a, b in zip(pieces, pieces[1:], strict=False):
             if a.end != b.start:
-                raise SplitPipeError(f"pipe {pid}: piece {a.id} ends at {a.end}, {b.id} starts at {b.start}")
+                raise SplitPipeError(
+                    f"pipe {pid}: piece {a.id} ends at {a.end}, {b.id} starts at {b.start}"
+                )
             if not a.end.startswith("leak"):
                 raise SplitPipeError(f"pipe {pid}: split node {a.end} is not a leak node")
             leak_nodes.append(a.end)

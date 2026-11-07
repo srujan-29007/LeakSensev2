@@ -122,7 +122,12 @@ def manifest(data_dir: Path) -> dict:
             entries.append(f"{p.relative_to(data_dir).as_posix()}\t{size}")
     entries.sort()
     digest = hashlib.sha256("\n".join(entries).encode()).hexdigest()
-    return {"folder": data_dir.name, "n_files": len(entries), "total_bytes": total, "sha256": digest}
+    return {
+        "folder": data_dir.name,
+        "n_files": len(entries),
+        "total_bytes": total,
+        "sha256": digest,
+    }
 
 
 def read_kv(path: Path) -> tuple[list[str], list[tuple[str, str]]]:
@@ -201,7 +206,9 @@ def validate_dataset(
 ) -> ValidationReport:
     data_dir = Path(data_dir)
     c = contract or DataContract()
-    checks = {cid: Check(cid, title, informational=(cid == "D10")) for cid, title in CHECK_TITLES.items()}
+    checks = {
+        cid: Check(cid, title, informational=(cid == "D10")) for cid, title in CHECK_TITLES.items()
+    }
     stats: dict = {}
     leaks: list[dict] = []
 
@@ -252,8 +259,13 @@ def validate_dataset(
     uncertainty = Counter()
     max_dev = defaultdict(float)
     base_demand_dev = 0.0
-    zero_stats = {"scenarios_with_zero_junction_pressure": 0, "zero_cells": 0, "zero_rows": 0,
-                  "zero_rows_outside_leaks": 0, "by_scenario": {}}
+    zero_stats = {
+        "scenarios_with_zero_junction_pressure": 0,
+        "zero_cells": 0,
+        "zero_rows": 0,
+        "zero_rows_outside_leaks": 0,
+        "by_scenario": {},
+    }
     leak_flow_medians: dict[str, list[float]] = defaultdict(list)
 
     for n, sid in enumerate(ids, 1):
@@ -265,8 +277,11 @@ def validate_dataset(
 
         # D2 files
         d2 = checks["D2"]
-        missing = [f for f in (*SCENARIO_FILES, f"Hanoi_Scenario-{sid}.inp", f"Scenario-{sid}_info.csv")
-                   if not (d / f).is_file()]
+        missing = [
+            f
+            for f in (*SCENARIO_FILES, f"Hanoi_Scenario-{sid}.inp", f"Scenario-{sid}_info.csv")
+            if not (d / f).is_file()
+        ]
         if missing:
             d2.fail(f"{tag}: missing {missing}")
             continue
@@ -276,7 +291,7 @@ def validate_dataset(
             d2.fail(f"{tag}: has Leaks/ but Labels.csv says 0 leaks")
         if n_leaks > 0 and not leaks_dir.is_dir():
             d2.fail(f"{tag}: Leaks/ missing")
-        leak_ids = [f.name[len("Leak_"):-len("_info.csv")] for f in info_files]
+        leak_ids = [f.name[len("Leak_") : -len("_info.csv")] for f in info_files]
         if leak_ids != [f"leak_node{k}" for k in range(max(n_leaks, 0))]:
             d2.fail(f"{tag}: leak files {leak_ids} do not match {n_leaks} leak(s)")
         for lid in leak_ids:
@@ -289,7 +304,9 @@ def validate_dataset(
         if hdr != ["Description", "Value"]:
             checks["D3"].fail(f"{tag}: info header {hdr}")
         if info.get("Duration") != c.duration_text or info.get("Time_Step") != c.time_step_text:
-            checks["D3"].fail(f"{tag}: Duration/Time_Step {info.get('Duration')}/{info.get('Time_Step')}")
+            checks["D3"].fail(
+                f"{tag}: Duration/Time_Step {info.get('Duration')}/{info.get('Time_Step')}"
+            )
         if info.get("Uncertainty_Topology_(%)") != "NO":
             checks["D9"].fail(f"{tag}: topology uncertainty {info.get('Uncertainty_Topology_(%)')}")
         unc = tuple(
@@ -307,10 +324,12 @@ def validate_dataset(
             if cols != exp_nodes:
                 d4.fail(f"{tag}/{f}: columns {cols[:3]}...{cols[-3:]} != expected order")
         link_cols = heads["Link_flows.csv"][0].split(",")
-        link_extra = link_cols[1 + len(exp_link_base):]
+        link_extra = link_cols[1 + len(exp_link_base) :]
         if link_cols[: 1 + len(exp_link_base)] != ["", *exp_link_base]:
             d4.fail(f"{tag}/Link_flows.csv: base link columns differ")
-        if len(link_extra) != len(leak_ids) or not all(re.fullmatch(r"\d+l+", x) for x in link_extra):
+        if len(link_extra) != len(leak_ids) or not all(
+            re.fullmatch(r"\d+l+", x) for x in link_extra
+        ):
             d4.fail(f"{tag}/Link_flows.csv: extra columns {link_extra} for {len(leak_ids)} leak(s)")
         if heads["Labels.csv"][0] != "Timestamp,Label":
             d4.fail(f"{tag}/Labels.csv header {heads['Labels.csv'][0]!r}")
@@ -400,12 +419,28 @@ def validate_dataset(
 
         # deep checks
         if deep:
-            _deep_scenario(tag, sid, d, leak_ids, leak_windows, leak_meta, c, ts_expected,
-                           checks, zero_stats, leak_flow_medians)
+            _deep_scenario(
+                tag,
+                sid,
+                d,
+                leak_ids,
+                leak_windows,
+                leak_meta,
+                c,
+                ts_expected,
+                checks,
+                zero_stats,
+                leak_flow_medians,
+            )
 
     # ---- details and stats
-    checks["D3"].details.update(n_rows=c.n_rows, first=c.first_timestamp, last=c.last_timestamp,
-                                step_minutes=c.step_minutes, deep_row_counts=deep)
+    checks["D3"].details.update(
+        n_rows=c.n_rows,
+        first=c.first_timestamp,
+        last=c.last_timestamp,
+        step_minutes=c.step_minutes,
+        deep_row_counts=deep,
+    )
     checks["D9"].details.update(
         uncertainty_levels_pct=sorted({v for key in uncertainty for v in key}),
         n_uncertainty_combinations=len(uncertainty),
@@ -418,22 +453,30 @@ def validate_dataset(
         pipes_in_single_leak_scenarios=len(pure),
         single_leak_scenarios_per_pipe={p: pure[p] for p in sorted(pure, key=_pipe_key)},
         never_leaking_observed=sorted(set(c.pipes) - {lk["pipe"] for lk in leaks}, key=_pipe_key),
-        double_split_scenarios=sorted({lk["scenario"] for lk in leaks if lk["piece"].endswith("ll")}),
+        double_split_scenarios=sorted(
+            {lk["scenario"] for lk in leaks if lk["piece"].endswith("ll")}
+        ),
     )
     types = Counter(lk["type"] for lk in leaks)
     stats["leak_types"] = dict(types)
     if deep:
         checks["D5"].details["zero_pressure"] = zero_stats
         stats["leak_flow_lps_median_per_leak"] = {
-            k: {"min": round(min(v), 2), "median": round(statistics.median(v), 2), "max": round(max(v), 2)}
-            for k, v in leak_flow_medians.items() if v
+            k: {
+                "min": round(min(v), 2),
+                "median": round(statistics.median(v), 2),
+                "max": round(max(v), 2),
+            }
+            for k, v in leak_flow_medians.items()
+            if v
         }
     else:
         checks["D5"].details["note"] = "NaN/negative/reservoir/zero-pressure checks need --deep"
         checks["D7"].details["note"] = "leak demand window check needs --deep"
 
-    return ValidationReport(checks=checks, deep=deep, contract=c, manifest=manifest(data_dir),
-                            stats=stats, leaks=leaks)
+    return ValidationReport(
+        checks=checks, deep=deep, contract=c, manifest=manifest(data_dir), stats=stats, leaks=leaks
+    )
 
 
 def _pipe_key(p: str) -> tuple[int, str]:
@@ -473,13 +516,23 @@ def _check_nominal(nominal: InpNetwork, c: DataContract, checks: dict[str, Check
             "max": round(max(ratios), 3),
         }
         checks["D10"].details["conclusion"] = (
-            "coordinates are not to scale; use pipe lengths" if max(ratios) / min(ratios) > 1.5
+            "coordinates are not to scale; use pipe lengths"
+            if max(ratios) / min(ratios) > 1.5
             else "coordinates roughly proportional to pipe lengths"
         )
 
 
-def _check_split_pipes(tag, sid, merged: dict[str, MergedPipe], link_extra, leak_ids, leak_meta,
-                       c: DataContract, checks, leaks: list[dict]) -> None:
+def _check_split_pipes(
+    tag,
+    sid,
+    merged: dict[str, MergedPipe],
+    link_extra,
+    leak_ids,
+    leak_meta,
+    c: DataContract,
+    checks,
+    leaks: list[dict],
+) -> None:
     d8 = checks["D8"]
     inp_extra = sorted((p for m in merged.values() for p in m.pieces[1:]), key=_pipe_key)
     if sorted(link_extra, key=_pipe_key) != inp_extra:
@@ -497,15 +550,24 @@ def _check_split_pipes(tag, sid, merged: dict[str, MergedPipe], link_extra, leak
             d8.fail(f"{tag}/{lid}: pieces of pipe {m.id} differ in diameter/roughness")
         piece = m.pieces[m.leak_nodes.index(lid) + 1]
         meta = leak_meta.get(lid, {})
-        leaks.append({
-            "scenario": sid, "leak": lid, "n_leaks": len(leak_ids), "pipe": m.id, "piece": piece,
-            "fraction": round(m.leak_fraction(lid), 6), "type": meta.get("type"),
-            "start": meta.get("start"), "end": meta.get("end"),
-        })
+        leaks.append(
+            {
+                "scenario": sid,
+                "leak": lid,
+                "n_leaks": len(leak_ids),
+                "pipe": m.id,
+                "piece": piece,
+                "fraction": round(m.leak_fraction(lid), 6),
+                "type": meta.get("type"),
+                "start": meta.get("start"),
+                "end": meta.get("end"),
+            }
+        )
 
 
-def _check_against_nominal(tag, net: InpNetwork, merged, nominal: InpNetwork, c: DataContract,
-                           checks) -> tuple[dict[str, float], float]:
+def _check_against_nominal(
+    tag, net: InpNetwork, merged, nominal: InpNetwork, c: DataContract, checks
+) -> tuple[dict[str, float], float]:
     d9 = checks["D9"]
     dev = {"length": 0.0, "diameter": 0.0, "roughness": 0.0}
     if set(merged) != set(nominal.pipes):
@@ -515,7 +577,9 @@ def _check_against_nominal(tag, net: InpNetwork, merged, nominal: InpNetwork, c:
     for pid, m in merged.items():
         nom = nominal.pipes[pid]
         if (m.start, m.end) != (nom.start, nom.end):
-            d9.fail(f"{tag}: pipe {pid} connects {m.start}->{m.end}, nominal {nom.start}->{nom.end}")
+            d9.fail(
+                f"{tag}: pipe {pid} connects {m.start}->{m.end}, nominal {nom.start}->{nom.end}"
+            )
         for key, value, nominal_value in (
             ("length", m.length, nom.length),
             ("diameter", m.diameters[0], nom.diameter),
@@ -540,8 +604,19 @@ def _check_against_nominal(tag, net: InpNetwork, merged, nominal: InpNetwork, c:
     return dev, bdev
 
 
-def _deep_scenario(tag, sid, d: Path, leak_ids, leak_windows, leak_meta, c: DataContract,
-                   ts_expected, checks, zero_stats, leak_flow_medians) -> None:
+def _deep_scenario(
+    tag,
+    sid,
+    d: Path,
+    leak_ids,
+    leak_windows,
+    leak_meta,
+    c: DataContract,
+    ts_expected,
+    checks,
+    zero_stats,
+    leak_flow_medians,
+) -> None:
     d3, d5, d7 = checks["D3"], checks["D5"], checks["D7"]
     for f in ("Node_demands.csv", "Link_flows.csv"):
         rows = count_rows(d / f)

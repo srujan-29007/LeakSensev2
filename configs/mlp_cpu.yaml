@@ -1,0 +1,30 @@
+# M8 masked MLP. Features: same block as full.yaml (shares its cache). Settings given as lists
+# are chosen per fold on an inner validation split of the training scenarios.
+name: mlp_cpu
+seed: 0
+n_scenarios: null
+features:
+  slot: tod_weekday
+  baseline_days: 14
+  estimator: mean
+  window: 48
+  stride: 24
+  max_lag_days: 7
+  max_windows_per_case: 32
+  pre_guard_steps: 0
+  snr_holdout_days: 3.0
+model:
+  kind: mlp
+  transform: [signed_log1p, scale_magnitude, none]
+  hidden: 256
+  layers: 2
+  dropout: 0.2
+  lr: 0.001
+  weight_decay: 0.0001
+  batch_size: 256
+  max_epochs: 300
+  patience: 30
+  val_frac: 0.15
+  class_weight: inverse
+  k_min: 1
+  seed: 0

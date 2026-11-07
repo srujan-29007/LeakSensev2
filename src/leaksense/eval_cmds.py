@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import time
+from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
@@ -15,18 +16,16 @@ from leaksense.config import DATA_DIR_VAR, ConfigError, get_artifacts_dir, get_d
 EXIT_OK = 0
 
 
-def add_parsers(sub) -> None:
+def add_common(e, default_config: str = "configs/full.yaml") -> None:
+    """Arguments shared by ``eval`` and ``train``."""
     from leaksense.evaluate import DEFAULT_KS
-    from leaksense.models.baselines import MODELS
 
-    e = sub.add_parser("eval", help="score a model on the CV cases (reports/<name>.json, .md)")
-    e.add_argument("--model", required=True, choices=sorted(MODELS))
     e.add_argument(
         "--k",
         default=",".join(map(str, DEFAULT_KS)),
         help="sensor budgets, comma separated (31 = all junctions)",
     )
-    e.add_argument("--config", default="configs/full.yaml", help="run config (selects features)")
+    e.add_argument("--config", default=default_config, help="run config (selects features)")
     e.add_argument("--name", help="report name (default: the model name)")
     e.add_argument("--draws", type=int, default=20, help="random sensor sets per k < 31")
     e.add_argument("--bootstrap", type=int, default=1000, help="bootstrap resamples")
@@ -35,18 +34,34 @@ def add_parsers(sub) -> None:
     e.add_argument("--reports-dir", default="reports")
     e.add_argument("--data-dir", help=f"dataset HanoiOK folder (default: ${DATA_DIR_VAR})")
     e.add_argument("--contract", help="JSON file overriding the default data contract")
+
+
+def add_parsers(sub) -> None:
+    from leaksense.models.baselines import MODELS
+
+    e = sub.add_parser("eval", help="score a model on the CV cases (reports/<name>.json, .md)")
+    e.add_argument("--model", required=True, choices=sorted(MODELS))
+    add_common(e)
     e.set_defaults(func=cmd_eval)
 
 
-def cmd_eval(args: argparse.Namespace) -> int:
+@dataclass
+class EvalInputs:
+    cfg: object  # RunConfig
+    fdir: Path
+    meta: dict
+    es: object  # EvalSet
+    net: object  # Network
+    ks: list[int]
+
+
+def load_inputs(args: argparse.Namespace) -> EvalInputs:
+    """Features, splits, network and k list for ``eval`` / ``train``."""
     from leaksense.data.contract import DataContract
-    from leaksense.evaluate import build_eval_set, evaluate, write_report
-    from leaksense.models.baselines import MODELS
+    from leaksense.evaluate import build_eval_set
     from leaksense.network import load_nominal_network
-    from leaksense.provenance import file_sha256, provenance
     from leaksense.runconfig import load_run_config
 
-    t0 = time.perf_counter()
     data_dir = get_data_dir({DATA_DIR_VAR: args.data_dir} if args.data_dir else None)
     contract = DataContract.from_json(args.contract) if args.contract else DataContract()
     cfg = load_run_config(args.config)
@@ -66,52 +81,69 @@ def cmd_eval(args: argparse.Namespace) -> int:
     n_sensors = len(net.sensor_ids)
     if any(k < 1 or k > n_sensors for k in ks):
         raise ConfigError(f"--k values must be in 1..{n_sensors}")
-    ks = [min(k, n_sensors) for k in ks]
+    return EvalInputs(cfg, fdir, meta, es, net, ks)
 
+
+def load_sensitivity(inp: EvalInputs) -> dict:
     from leaksense import sensitivity as sens
-    from leaksense.models.baselines import NEEDS_SENSITIVITY
 
-    resources = {}
-    if args.model in NEEDS_SENSITIVITY:
-        manifest_sha = meta.get("data_manifest_sha256") or ""
-        spath = sens.sensitivity_path(get_artifacts_dir(), manifest_sha)
-        if not spath.is_file():
-            raise ConfigError(
-                f"no sensitivity matrix at {spath}; run `leaksense build-sensitivity`"
-            )
-        resources["sensitivity"] = sens.load(spath)
-        if str(resources["sensitivity"]["manifest"]) != manifest_sha:
-            raise ConfigError("sensitivity matrix and features come from different datasets")
-    model = MODELS[args.model](net, **resources)
+    manifest_sha = inp.meta.get("data_manifest_sha256") or ""
+    spath = sens.sensitivity_path(get_artifacts_dir(), manifest_sha)
+    if not spath.is_file():
+        raise ConfigError(f"no sensitivity matrix at {spath}; run `leaksense build-sensitivity`")
+    S = sens.load(spath)
+    if str(S["manifest"]) != manifest_sha:
+        raise ConfigError("sensitivity matrix and features come from different datasets")
+    return S
+
+
+def run_and_report(
+    args: argparse.Namespace,
+    inp: EvalInputs,
+    model,
+    model_name: str,
+    t0: float,
+    folds=None,
+    extra=None,
+) -> dict:
+    """Evaluate ``model``, write reports/<name>.json and .md, print the k table.
+
+    ``extra`` (a dict, or a function returning one, called after evaluation) adds report keys.
+    """
+    from leaksense.evaluate import evaluate, write_report
+    from leaksense.provenance import file_sha256, provenance
+
     results, preds = evaluate(
-        model, es, ks, draws=args.draws, n_boot=args.bootstrap, seed=args.seed
+        model, inp.es, inp.ks, draws=args.draws, n_boot=args.bootstrap, seed=args.seed, folds=folds
     )
-    name = args.name or args.model
+    n_cases = results[str(inp.ks[0])]["groups"]["overall"]["n"]
+    name = args.name or model_name
     report = {
         "name": name,
-        "model": args.model,
+        "model": model_name,
         "provenance": {
             **provenance(
                 None,
-                config=cfg.to_dict(),
+                config=inp.cfg.to_dict(),
                 seed=args.seed,
-                manifest_sha256=meta.get("data_manifest_sha256"),
+                manifest_sha256=inp.meta.get("data_manifest_sha256"),
             ),
             "splits_sha256": file_sha256(args.splits),
         },
-        "features_dir": fdir.name,
-        "features_sha256_12": meta.get("features_sha256_12"),
-        "n_cases": len(es.cases),
-        "ks": ks,
+        "features_dir": inp.fdir.name,
+        "features_sha256_12": inp.meta.get("features_sha256_12"),
+        "n_cases": n_cases,
+        "ks": inp.ks,
         "draws": args.draws,
         "bootstrap": args.bootstrap,
-        "tercile_edges": es.tercile_edges,
+        "tercile_edges": inp.es.tercile_edges,
+        **((extra() if callable(extra) else extra) or {}),
         "elapsed_seconds": round(time.perf_counter() - t0, 1),
         "results": results,
     }
     out = write_report(report, preds, Path(args.reports_dir), get_artifacts_dir())
 
-    print(f"{name}: {len(es.cases)} CV cases, features {fdir.name}, ks {ks}")
+    print(f"{name}: {n_cases} CV cases, features {inp.fdir.name}, ks {inp.ks}")
     print("   k   top-1   top-3   top-5   small top-3   median dist (m)")
     for k, r in results.items():
         o, s = r["groups"]["overall"], r["groups"].get("leak_type=small", {})
@@ -121,4 +153,17 @@ def cmd_eval(args: argparse.Namespace) -> int:
             f"{100 * o['top5']['value']:7.1f}   {st3}     {o['dist_m_median']['value']:9.0f}"
         )
     print(f"done in {report['elapsed_seconds']:.0f}s -> {out}, {out.with_suffix('.md')}")
+    return report
+
+
+def cmd_eval(args: argparse.Namespace) -> int:
+    from leaksense.models.baselines import MODELS, NEEDS_SENSITIVITY
+
+    t0 = time.perf_counter()
+    inp = load_inputs(args)
+    resources = {}
+    if args.model in NEEDS_SENSITIVITY:
+        resources["sensitivity"] = load_sensitivity(inp)
+    model = MODELS[args.model](inp.net, **resources)
+    run_and_report(args, inp, model, args.model, t0)
     return EXIT_OK

@@ -284,3 +284,109 @@ def test_show_case_scenario_34(capsys):
     vals = {k: float(v) for k, v in vals.items()}
     assert vals["22"] == pytest.approx(-61, abs=3) and vals["21"] == pytest.approx(-33, abs=3)
     assert all(abs(v) <= 4.5 for k, v in vals.items() if k not in ("21", "22"))
+
+
+# ----------------------------------------------------------------------------- CLI (synthetic)
+
+LONG_ROWS = 40 * 48  # long enough for the >28-day pseudo-cases of the baseline study
+LONG_SPECS = {
+    1: ScenarioSpec(),
+    2: ScenarioSpec([LeakSpec("3", 1700, 1800, "big", 0.5)]),
+    3: ScenarioSpec([LeakSpec("2", 1750, 1900, "small", 0.4)]),
+    4: ScenarioSpec([LeakSpec("5", 1690, 1850, "big", 0.6)]),  # listed as test below
+}
+
+
+@pytest.fixture
+def cli_env(tmp_path, monkeypatch):
+    import json
+
+    data_dir = make_dataset(tmp_path, LONG_SPECS, n_rows=LONG_ROWS, daily_amp=2.0)
+    contract = contract_for(LONG_SPECS, n_rows=LONG_ROWS)
+    (tmp_path / "contract.json").write_text(json.dumps(contract.to_dict()))
+    build_index(data_dir, contract).cases.to_parquet(tmp_path / "cases.parquet")
+    (tmp_path / "splits.json").write_text(json.dumps({"test": [4], "folds": [[2], [3]]}))
+    (tmp_path / "cfg.yaml").write_text(
+        "name: t\nfeatures:\n  slot: tod_weekday\n  max_lag_days: 7\n"
+    )
+    monkeypatch.setenv("LEAKSENSE_ARTIFACTS_DIR", str(tmp_path / "art"))
+    common = [
+        "--data-dir",
+        str(data_dir),
+        "--contract",
+        str(tmp_path / "contract.json"),
+        "--cases",
+        str(tmp_path / "cases.parquet"),
+        "--config",
+        str(tmp_path / "cfg.yaml"),
+    ]
+    return tmp_path, common
+
+
+def test_cli_build_features_and_show_case(cli_env, capsys):
+    import json
+
+    from leaksense.cli import main
+
+    tmp_path, common = cli_env
+    assert main(["build-features", *common, "--quiet"]) == 0
+    out_dirs = list((tmp_path / "art" / "features").iterdir())
+    assert len(out_dirs) == 1
+    d = out_dirs[0]
+    z = np.load(d / "features.npz")
+    assert z["x"].shape[1] == 4 and len(z["x"]) == len(z["weight"]) == len(z["case_of_window"])
+    stats = pd.read_parquet(d / "case_stats.parquet")
+    assert len(stats) == 3 and stats["snr"].notna().all()
+    meta = json.loads((d / "meta.json").read_text())
+    assert meta["git"]["commit"] and meta["data_manifest_sha256"] and "config" in meta
+    capsys.readouterr()
+    assert main(["show-case", "S002-pure", *common]) == 0
+    out = capsys.readouterr().out
+    assert len(re.findall(r"^\s*[2-5]\s+-?\d+\.\d+", out, flags=re.M)) == 4
+    assert "<- pipe end" in out
+
+
+def test_cli_baseline_study_skips_test_fold(cli_env, monkeypatch):
+    import json
+
+    from leaksense.cli import main
+
+    tmp_path, common = cli_env
+    loaded = []
+    real_get = F.PressureCache.get
+
+    def spy(self, sid):
+        loaded.append(sid)
+        return real_get(self, sid)
+
+    monkeypatch.setattr(F.PressureCache, "get", spy)
+    out = tmp_path / "rep" / "bc"
+    args = [
+        "baseline-study",
+        *common,
+        "--splits",
+        str(tmp_path / "splits.json"),
+        "--out",
+        str(out),
+        "--quiet",
+    ]
+    assert main(args) == 0
+    assert set(loaded) <= {1, 2, 3} and 4 not in loaded
+    rep = json.loads(out.with_suffix(".json").read_text())
+    assert rep["excluded_test_scenarios"] == 1 and rep["decision"]["window"] in (
+        1,
+        6,
+        12,
+        24,
+        48,
+        96,
+        336,
+    )
+    assert rep["git"]["commit"] and rep["data_manifest_sha256"]
+    md = out.with_suffix(".md").read_text(encoding="utf-8")
+    assert "## Decision" in md and "tod_weekday" in md
+
+
+def test_choose_needs_long_history():
+    with pytest.raises(ValueError, match="more than 28 days"):
+        choose(pd.DataFrame())

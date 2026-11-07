@@ -190,6 +190,11 @@ def lag_study(
 def choose(comp: pd.DataFrame) -> dict:
     """Decision rules from the module docstring of PLAN M4 (stated in the report)."""
     by_label = {m.label: m for m in METHODS}
+    if comp.empty or ">28d" not in set(comp["stratum"]):
+        raise ValueError(
+            "baseline study: no pseudo-cases with more than 28 days of leak-free history; "
+            f"need stretches of at least {28 + EVAL_DAYS} days before the first leak"
+        )
     out = {}
     for stratum in comp["stratum"].unique():
         g = comp[(comp["stratum"] == stratum) & (comp["W"] == 48)]

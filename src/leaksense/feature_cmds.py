@@ -22,6 +22,7 @@ def add_parsers(sub) -> None:
     common.add_argument(
         "--cases", help="case index (default: $LEAKSENSE_ARTIFACTS_DIR/cases.parquet)"
     )
+    common.add_argument("--contract", help="JSON file overriding the default data contract")
     common.add_argument("--quiet", action="store_true", help="no progress output")
 
     s = sub.add_parser(
@@ -44,6 +45,7 @@ def add_parsers(sub) -> None:
 
 
 def _setup(args):
+    from leaksense.data.contract import DataContract
     from leaksense.data.features import PressureCache
     from leaksense.data.validate import manifest
     from leaksense.runconfig import load_run_config
@@ -55,7 +57,8 @@ def _setup(args):
         raise ConfigError(f"{cases_path} not found; run `leaksense build-index` first")
     cases = pd.read_parquet(cases_path)
     sha = manifest(data_dir)["sha256"]
-    cache = PressureCache(data_dir, get_artifacts_dir(), sha)
+    contract = DataContract.from_json(args.contract) if args.contract else DataContract()
+    cache = PressureCache(data_dir, get_artifacts_dir(), sha, contract)
     return data_dir, cfg, cases, cache, sha
 
 
@@ -282,7 +285,7 @@ def cmd_show_case(args: argparse.Namespace) -> int:
     )
     win = case_windows(cd.dh, case, cfg.features)
     mean = win.x.mean(axis=0)
-    net = load_nominal_network(data_dir)
+    net = load_nominal_network(data_dir, c)
     pipe = net.pipes.set_index("id").loc[case["pipe"]]
     ends = {pipe["start"], pipe["end"]}
     print(

@@ -1,6 +1,6 @@
 # LeakSense: Specification
 
-- **Status:** M0–M6 are done (M5 ran before M4's measurements). The data contract is verified and enforced by `leaksense validate-data` (see `reports/data_inventory.md`).
+- **Status:** M0–M7 are done (M5 ran before M4's measurements). The data contract is verified and enforced by `leaksense validate-data` (see `reports/data_inventory.md`).
 - **Last updated:** 2026-11-08
 
 ## 1. Problem
@@ -135,6 +135,13 @@ A single leak has already been detected on the Hanoi water network (LeakDB). Pre
   - **Headline metrics are per case.**
   - Per-sample metrics are secondary.
 - **Sensor budget k.** The number of junctions that have a pressure sensor, from 1 to 31.
+- **Sensitivity matrix S** (M7, `reports/sensitivity.md`): the pressure change at the 31 junctions for a fixed leak demand at the midpoint of each of the 33 eligible pipes, simulated with EPANET on the **nominal** `Hanoi.inp` only.
+  - **Demand levels:** every nominal base demand is scaled by α = 0.231 / 0.494 / 0.798. These are the p5 / p50 / p95 of the total junction demand per timestep ÷ the nominal total. They are computed from the junction columns of `Node_demands.csv` over Scenario-1 and the non-test scenarios; never the reservoir column, never `leak_node*`.
+  - **Leak sizes:** 95.3 L/s (small) and 949.2 L/s (big), the median leak flows of non-test cases.
+  - **Inputs, not ground truth:** α and the sizes are global aggregates used only to build S. Nothing per case is taken from the simulator outputs.
+  - **Limits:**
+    - EPANET holds a leak demand fixed whatever the pressure, while LeakDB leaks are pressure-dependent. Big leaks on thin branches therefore over-drop: 19 of 198 runs go below 0 m, against −61 m observed for scenario 34. Cosine matching is scale-free, so this matters little for `sigmatch`.
+    - The smallest cosine between the levels is 0.978, below the 0.99 bar, so the demand level changes the response shape somewhat (mostly small leaks on the southern branches, pipes 13–16 and 27–32).
 
 ## 6. Success metrics
 

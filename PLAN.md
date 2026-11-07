@@ -175,7 +175,7 @@ notebooks/kaggle_run.ipynb     # calls the CLI only, no logic
   - **Lag check:** `max_lag_days` 14 vs 7 makes no measurable difference, so it stays at 7.
   - 13 metric tests pass, plus a real-data test.
 
-### M7: Sensitivity matrix (physics input)
+### M7: Sensitivity matrix (physics input) — DONE
 - On the nominal network, simulate one leak per eligible pipe (33 pipes).
   - The leak is a fixed demand at a junction inserted at the pipe's midpoint, run with `EpanetSimulator`.
   - Do not use `add_leak` with `EpanetSimulator`. EPANET ignores WNTR leak models, which was a bug in the old repo.
@@ -201,6 +201,21 @@ notebooks/kaggle_run.ipynb     # calls the CLI only, no logic
     - `@pytest.mark.data`: of all big-size columns of S, the one for pipe 22 is the most cosine-similar to Scenario 34's observed mean ΔH
   - This replaces the earlier test "the largest entry is at an endpoint of the pipe". That claim was never verified, and drops can be larger at dead ends further downstream.
   - `uv run leaksense eval --model sigmatch --k 31` writes a report.
+- **Verified:**
+  - **`build-sensitivity`:** 201 EPANET runs in about 20 s; α = 0.231 / 0.494 / 0.798; leak sizes 95.3 / 949.2 L/s; every entry of S ≤ 0. There are 19 negative-pressure warnings, all at the big size on dead-end or thin-branch pipes.
+  - **Level stability:** the smallest cosine is 0.978 (< 0.99), so the **levels differ**. `sigmatch` uses mid (the plan's default) and `sigmatch_all` takes the max over every size and level. M10 should start from all levels.
+  - **Units:** a hand Hazen-Williams check of node 2's drop agrees with EPANET to within 1%.
+  - **Scenario 34:** the observed ΔH is most cosine-similar to pipe 22's column.
+  - **Results** at k = 8 (top-3 and small-leak top-3, %):
+
+    | rung | top-3 | small-leak top-3 |
+    |---|---|---|
+    | `maxdh` | 43.1 | 43.1 |
+    | `sigmatch` | 75.1 [72.3, 78.1] | 64.6 |
+    | `sigmatch_all` | 78.4 [75.7, 81.2] | 68.5 [63.8, 72.7] |
+
+  - **At k = 31:** top-1 is 33.7% for `maxdh`, 58.0% for `sigmatch` and 64.0% for `sigmatch_all`. Top-3 is about the same for all three (88.5–91.2%).
+  - 9 sensitivity tests pass, plus a real-data test.
 
 ### M8: Learned tabular rungs (MLP, GBM) with masking
 - Input is `[ΔH·m, m]` over the 31 junctions, after the M4 input transform. The mask size k is drawn uniformly from 1 to 31. The output is 33 classes.
@@ -224,7 +239,7 @@ notebooks/kaggle_run.ipynb     # calls the CLI only, no logic
   - `uv run leaksense train --config configs/gat_cpu.yaml --fold 0` runs as a smoke test.
 
 ### M10: Physics-input GAT and ablation
-- Add the S-based prior three ways: as node features, as edge features, and as a per-pipe prior logit.
+- Add the S-based prior three ways: as node features, as edge features, and as a per-pipe prior logit. Use all three demand levels (M7: cross-level cosine 0.978 < 0.99, and `sigmatch_all` ≥ `sigmatch`), and ablate mid-only vs all levels.
 - Ablate plain vs physics, with CIs, broken down by leak type and by leak-flow tercile.
 - **Verify:** `uv run leaksense ablate --config configs/ablation_cpu.yaml` writes `reports/ablation.md`.
 

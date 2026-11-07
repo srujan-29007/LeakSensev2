@@ -42,7 +42,7 @@ uv run leaksense --help                  # CLI: validate-data, build-index, buil
   - Splits are grouped by **scenario ID**.
   - Metrics are aggregated **per case**, not per timestep.
   - Every metric is reported overall, by small vs big leak, and by pure vs solo case.
-- **ΔH baseline.** Use the same scenario's pre-leak window, matched on time of day and day of week. If there are fewer than 14 days of pre-leak history, fall back to a post-leak window. The baseline must never overlap a timestep where a leak is active.
+- **ΔH baseline.** Use a window of at least 14 leak-free days from the same scenario. Take the first that qualifies: pre-leak (most recent days first), post-leak, pre and post combined; otherwise exclude the case and count it. The baseline must never overlap a timestep where a leak is active. Slot matching (time of day, or time of day plus weekday) is chosen in M4 by measurement. Do not assume a weekly cycle.
   - Never use Scenario-1 as a global baseline: every scenario has its own pipe parameters (±20%) and its own demands.
 - **Distances.** `.inp` coordinates are not to scale. Distance metrics must use pipe lengths (network distance in metres) or hop counts, never Euclidean distance between coordinates.
 - **Locked test fold.** Touch it only in M13.
@@ -76,10 +76,15 @@ The pipeline runs in this order: `data/validate` → `data/index` → `data/feat
 - Its results (about 40% top-1) used nearest-node labels and the Scenario-1 baseline, so they are not comparable with this project's numbers.
 
 ## Git rules
-- Commit after every logical unit of work: each passing Verify step, each new module
-  with its tests, each bugfix. Aim for small, focused commits.
-- Before each commit run `git status` and stage specific files; never commit data/,
-  reference/, artifacts/, or large files.
-- Message format: short imperative subject (e.g. "Add network graph loader"), optional
-  body. No Claude attribution, no Co-Authored-By, no "Generated with" lines.
-- Never push; I push myself. Never rewrite history.
+- Commit at natural checkpoints: when something works, a test passes, or before
+  starting something risky. Small commits are good. WIP commits are fine.
+- Stage specific files, check `git status` first. Never commit data/,
+  reference/, artifacts/ or large files.
+- Commit messages: one short line, plain words, how a student would write it.
+  Lowercase is fine. Say what changed, not why it's great.
+  Good: "network loader working", "fix pipe labels for split pipes", "wip feature cache",
+        "tests for masking", "oops forgot gitignore"
+  Bad:  "Add comprehensive network graph loader with robust validation and tests"
+- No message body, no bullet lists, no emojis, no "feat:/chore:" prefixes, no
+  words like "comprehensive", "robust", "enhance", "streamline", "leverage".
+- No Claude attribution or Co-Authored-By lines. Never push, I push myself.

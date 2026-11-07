@@ -1,6 +1,6 @@
 # LeakSense: Specification
 
-- **Status:** data contract verified (see `reports/data_inventory.md`). Ready to freeze once M0 is done.
+- **Status:** M0 and M1 are done. The data contract is verified and enforced by `leaksense validate-data` (see `reports/data_inventory.md`).
 - **Last updated:** 2026-11-08
 
 ## 1. Problem
@@ -114,10 +114,16 @@ A single leak has already been detected on the Hanoi water network (LeakDB). Pre
   - The reservoir `1` is excluded because its pressure is always 0.
   - `leak_node*` columns are **never** used.
   - Demand and flow CSVs are never model inputs.
-- **ΔH.** Pressure minus the same scenario's leak-free baseline at the matching time-of-day and day-of-week slot.
-  - The baseline uses the pre-leak period.
-  - If there are fewer than 14 days of pre-leak history (8 pure cases), it uses the period after the leak instead, provided no other leak is active then.
-  - A baseline never overlaps any leak-active timestep.
+- **ΔH.** Pressure minus a leak-free baseline taken from the same scenario.
+  - **Slot matching** is chosen in M4 by measuring the noise of ΔH on held-out leak-free data. The starting hypothesis is matching on time of day and day of week. A weekly demand cycle has not been verified, because each scenario has a full-year demand pattern for every junction.
+  - **Baseline window.** It needs at least 14 leak-free days. Take the first option that qualifies:
+    1. the pre-leak period, preferring the most recent days
+    2. the post-leak period, clear of every leak in the scenario
+    3. pre- and post-leak combined
+    4. none of these: the case is excluded and counted in reports
+
+    8 pure cases have fewer than 14 pre-leak days, and 14 leaks end within a day of the year's end.
+  - A baseline never overlaps any timestep where a leak is active.
 - **Sample.** A window of ΔH at the sensed junctions, all of it inside the case's active period.
   - Small leaks change pressure by about 1 m, which is close to the 0.5 m step-to-step demand noise. So samples must average over a window. Window length and stride are set in M4.
 - **Case-level prediction.** The average of the per-sample class probabilities over the case.
@@ -163,7 +169,8 @@ These are not promises. The final report says which ones held.
 - **H2.** At small budgets (k ≤ 6), physics inputs improve on the plain GAT.
 - **H3.** Greedy placement beats the random median at every k from 2 to 16, and lies above the random 95th percentile for k ≤ 8.
 - **H4.** The single masked model gets within 3 points of top-3 accuracy of a model trained for one fixed budget, at k = 4 and k = 8.
-- **H5.** Big leaks are close to trivial at k ≥ 8, because they cause pressure drops of tens of metres. The headline difficulty number is therefore **small-leak top-3 at k = 8**, and claims about model quality rest mainly on it.
+- **H5.** Big leaks are close to trivial at k ≥ 8, because the typical big leak (median 980 L/s) causes pressure drops of tens of metres. The headline difficulty number is therefore **small-leak top-3 at k = 8**, and claims about model quality rest mainly on it.
+  - Leak sizes overlap across the two types (D11), and the smallest leaks (about 4 L/s) are probably below what pressure sensors can detect. So the final report also plots accuracy against leak flow. This plot is for reporting only; leak flow is never a model input.
 
 ## 7. Constraints and configuration
 
@@ -181,7 +188,11 @@ These are not promises. The final report says which ones held.
 
 ## 8. Data contract (verified 2026-11-08)
 
-The full evidence is in `reports/data_inventory.md`. The `leaksense validate-data` check (PLAN.md M1) asserts every item below.
+`leaksense validate-data` (PLAN.md M1) asserts D1–D9 and reports D10–D11 as information. On the real dataset:
+- **fast mode:** passes D1–D9 in 38 s
+- **`--deep` mode:** passes D1–D9 in 265 s
+
+The dataset manifest sha256 is `6281be1c3cf2…`. The evidence is in `reports/data_inventory.md` and `reports/data_validation*.json`.
 
 | # | Fact |
 |---|---|
@@ -189,9 +200,10 @@ The full evidence is in `reports/data_inventory.md`. The `leaksense validate-dat
 | D2 | Each scenario folder has `Hanoi_Scenario-N.inp`, `Node_pressures.csv`, `Node_demands.csv`, `Link_flows.csv`, `Labels.csv` and `Scenario-N_info.csv`. Scenarios with leaks also have `Leaks/`, which is absent from Scenario-1. |
 | D3 | Every CSV has 17,520 rows at 30-min steps, running from 2024-01-01 00:00 to 2024-12-30 23:30. The timestamp is in the first, unnamed column. Timestamps are identical in every scenario. |
 | D4 | Node columns are `2`…`32`, then `leak_node0`[, `leak_node1`], then `1`. Link columns are `1`…`34`, plus one `Xl` (or `Xll`) per leak. |
-| D5 | Units: pressure in m, flow and demand in L/s, length in m, diameter in mm, Hazen-Williams roughness. The reservoir pressure is always 0. There are no NaNs or negative pressures. |
+| D5 | Units: pressure in m, flow and demand in L/s, length in m, diameter in mm, Hazen-Williams roughness. The reservoir pressure is always 0. There are no NaNs or negative pressures, and no junction pressure is ever exactly 0 (checked with `--deep`). |
 | D6 | Each leak `Leaks/Leak_leak_nodeK_info.csv` has a header row `Description , Value`, then the keys Leak Node, Leak Area, Leak Diameter, Leak Type (small/big), Leak Start, Leak End (ISO format, End inclusive). Keys and values need whitespace stripped. |
 | D7 | `Leaks/Leak_leak_nodeK_demand.csv` (columns `,leak_nodeK`) is non-zero exactly over [Start, End]. The per-scenario `Labels.csv` is the union of all leaks' active periods. |
 | D8 | A leak splits pipe X into `X: a→leak_nodeK` and `Xl: leak_nodeK→b`. The label is X. Only pipes 2–34 occur. |
-| D9 | Topology and node coordinates are identical to `Hanoi.inp` in every scenario, once the split pipes are merged back. Pipe length, diameter and roughness, junction base demands and demand patterns differ per scenario (each parameter within ±20% of nominal). |
-| D10 | Coordinates are not to scale. All distances use pipe lengths. |
+| D9 | Topology and node coordinates are identical to `Hanoi.inp` in every scenario, once the split pipes are merged back. Per scenario, pipe length, diameter and roughness, and junction base demands, each differ from nominal by at most ±20%. Uncertainty levels are 5, 10, 15 or 20% (64 combinations). Demand patterns also differ per scenario. |
+| D10 | Coordinates are not to scale: pipe length ÷ coordinate distance ranges from 0.13 to 5.99. All distances use pipe lengths. |
+| D11 | Leak flow (the median over each leak's active period) is 3.96–997 L/s for small leaks (median 97) and 69–8,994 L/s for big leaks (median 980). Leak type is the generator's label, not a disjoint size class. Leak flow is ground truth and is used only for reporting, never as an input. |

@@ -3,7 +3,44 @@
 - **Inspected:** 2026-11-08, by hand and read-only.
 - **Method:** directory listings, file sizes, CSV header lines, `head`/`tail` of sample files, and the header sections of `.inp` files. Large files were not loaded in full, except `Node_pressures.csv` (5 MB) for Scenarios 34 and 229.
 - **Location:** the dataset is outside the repo and is referenced only through `LEAKSENSE_DATA_DIR`, which points at the `HanoiOK/` folder.
-- **Automation:** PLAN.md M1 turns these checks into `leaksense validate-data`.
+- **Automation:** PLAN.md M1 turned these checks into `leaksense validate-data`. Section 0 has the results.
+
+## 0. Automated validation (M1, 2026-11-08)
+
+`leaksense validate-data` checks the data contract D1–D10 in SPEC.md §8. It only reads the dataset, and a test confirms that no file timestamps change.
+
+| Mode | Command | Result | Time | Report |
+|---|---|---|---|---|
+| fast | `uv run leaksense validate-data` | D1–D9 PASS, D10 INFO | 38 s | `reports/data_validation.json` |
+| deep | `uv run leaksense validate-data --deep --out reports/data_validation_deep.json` | D1–D9 PASS, D10 INFO | 265 s | `reports/data_validation_deep.json` |
+
+- **Dataset manifest:** 4,510 files, 11,123,746,633 bytes. The sha256 of the sorted (path, size) list is `6281be1c3cf2ad971298fdcd672b17e602da7e5dcca86d23c52b924ecf5dccdf`. Later reports cite this hash.
+- **What the fast mode checks:**
+  - every header
+  - the first and last timestamp of every wide CSV
+  - every per-scenario `Labels.csv` in full
+  - every info file
+  - the header and tail sections of every `.inp`
+- **What the deep mode adds:**
+  - parses every `Node_pressures.csv` and leak-demand file in full
+  - counts the rows of `Node_demands.csv` and `Link_flows.csv`
+
+The deep pass corrected two statements from the manual inspection. Sections 2, 3 and 5 below are updated to match.
+
+1. **No junction ever has a pressure of exactly 0.** There are 0 zero cells across all 500 scenarios and all 31 junctions. The 0.00 seen during manual inspection was the reservoir column, which is always 0.
+2. **Leak flow varies far more than the two sampled scenarios suggested.** Each figure below is the median flow over a leak's active period.
+
+   | Type | Leaks | Min (L/s) | Median (L/s) | Max (L/s) |
+   |---|---|---|---|---|
+   | small | 385 | 3.96 | 96.63 | 996.90 |
+   | big | 369 | 69.35 | 979.69 | 8,993.84 |
+
+   The two types overlap: some "small" leaks are larger than some "big" ones. Leak type is a generator setting, not a clean size class.
+
+Other values confirmed by the validator:
+- Per-scenario base demands deviate up to ±20% from nominal (max 0.19997).
+- Pipe length, diameter and roughness deviate up to ±20% (max 0.19993 / 0.19998 / 0.19996).
+- Across pipes, pipe length divided by coordinate distance ranges from 0.128 to 5.99 (median 1.70). Coordinates are therefore not to scale.
 
 Scenarios sampled in detail: 1 (no leak), 2 and 250 (two leaks), 34 and 500 (one leak), 229 (small single leak), 273 (shortest leak). The checks on counts, headers, info files and `.inp` header sections ran over all 500 scenarios.
 
@@ -42,10 +79,10 @@ Units, taken from `[OPTIONS] UNITS LPS`:
 - Pipe length is in m and diameter in mm.
 - Hazen-Williams roughness.
 
-Values:
-- No NaNs or blanks in the sampled pressure files.
+Values (deep validation, all 500 scenarios):
+- No NaNs or blanks.
 - No negative pressures.
-- Some pressures are exactly 0.00. This is probably pressure-deficient behaviour during big leaks; to be quantified in M1.
+- No junction pressure is ever exactly 0. *Correction: the manual inspection wrongly reported zero pressures; it was reading the reservoir column.*
 - All junction elevations are 30 m. The reservoir head is 100 m, and its pressure column is always 0.
 
 Header shapes across all 500 scenarios (node columns, link columns):
@@ -69,8 +106,11 @@ Leak End , 2024-12-09 10:30:00    <- inclusive
 ```
 
 - **Leak flow.** `Leak_leak_nodeK_demand.csv` has columns `,leak_nodeK` and 17,520 rows. The value is non-zero exactly from Leak Start to Leak End, both inclusive. Checked on scenarios 34, 229 and 273.
-  - Small leaks are roughly constant at about 109 L/s (scenario 229).
-  - Big leaks run at about 650–700 L/s (scenario 34), similar to the whole network's demand of about 640 L/s.
+  - Within a single leak, the flow is roughly constant. Examples: scenario 229 (small) runs at about 109 L/s, and scenario 34 (big) at about 650–700 L/s.
+  - Across leaks the flow varies widely (deep validation, median over each leak's active period):
+    - small: 3.96–997 L/s, median 97
+    - big: 69–8,994 L/s, median 980
+    - The two types overlap. For scale, the whole network's demand is about 640 L/s.
   - Leak area: small 0.0001–0.042 m² (median 0.0035), big 0.0026–0.78 m² (median 0.070).
 - **Link to `Labels.csv`.** The per-scenario `Labels.csv` is 1 exactly when at least one leak is active, so it is the union of the leaks' active windows. The top-level `Labels.csv` value equals the number of leak info files in all 500 scenarios.
 - **Which pipe leaks.** Each leak is a new junction inserted by splitting a pipe. In the scenario `.inp`, pipe `X: a→b` becomes `X: a→leak_nodeK` and `Xl: leak_nodeK→b`. Both pieces keep X's diameter and roughness.
@@ -110,15 +150,18 @@ The nominal `Hanoi.inp` is the right network for the graph and for the sensitivi
 ## 5. Inconsistencies, gaps and surprises
 
 1. **Oracle columns.** `Node_pressures.csv` and `Node_demands.csv` include `leak_nodeK` columns, which means a "sensor" sits on the leak itself. `Link_flows.csv` includes the split-pipe flows. All of these must be excluded from features.
-2. **Big leaks are extreme.** In Scenario 34 (pipe 22, big leak) the end node's mean pressure drops by **61 m**, its neighbour's by 33 m, and every other node's by at most 4 m. Big leaks will be trivial to localise with dense sensors, so the headline metrics must be split by leak type.
-3. **Small leaks are close to the noise.** In Scenario 229 (pipe 32, small leak), the largest mean drop is **1.25 m**. Pressure moves about 0.5 m between consecutive timesteps because of stochastic demands; many junction demands are exactly 0 at a given step. Single timesteps are therefore noisy, and windowing or averaging is needed.
-4. **Coordinates are not to scale.** Pipe 2 is 1,350 m long, but its endpoints are about 700 coordinate units apart. Euclidean distance in coordinate units is not a physical metric, so use network distance along pipes in metres.
-5. **No common baseline.** Each scenario has its own pipe parameters, base demands and demand patterns. Subtracting Scenario-1's pressures, as the old code did, mixes all of these differences into ΔH.
-6. **Scenario-1 has no `Leaks/` folder.** The old code assumed an empty folder; code must cope with it being absent.
-7. **The leak info CSV has a header row** (`Description , Value`), and its keys and values carry stray spaces. The old `pd.read_csv` call happened to work because of the header row.
-8. **Too little pre-leak history in a few cases.** 8 single-leak scenarios have under 14 days before the leak starts, so they need a post-leak baseline as a fallback.
-9. **Pipe 1 is never a label,** so there are 33 classes and chance accuracy is 1/33. Pipes 2 and 6 have only 2 pure single-leak scenarios each, plus 2 and 5 solo segments respectively.
-10. **The second leak in Scenario 273 lasts zero length** (start equals end). Harmless here, since only the first leak's solo segment is used.
+2. **Big leaks are often extreme.** Median flow is 980 L/s, above the whole network's demand, and the largest reaches 8,994 L/s. In Scenario 34 (pipe 22, about 665 L/s) the end node's mean pressure drops by **61 m**, its neighbour's by 33 m, and every other node's by at most 4 m. These leaks will be easy to locate with dense sensors, so headline metrics must be broken down.
+3. **Small leaks are close to the noise.** In Scenario 229 (pipe 32, about 109 L/s, close to the small-leak median) the largest mean pressure drop is **1.25 m**. Pressure moves about 0.5 m between consecutive timesteps because of stochastic demands; many junction demands are exactly 0 at a given step.
+   - Single timesteps are therefore noisy, and windowing or averaging is needed.
+   - The smallest leaks (around 4 L/s) are likely impossible to locate from pressure alone.
+4. **Leak type does not cleanly indicate leak size.** The small and big flow ranges overlap: small leaks reach 997 L/s, while big leaks start at 69 L/s. Breaking results down by type alone can hide the effect of size.
+5. **Coordinates are not to scale.** Pipe 2 is 1,350 m long, but its endpoints are about 700 coordinate units apart. Euclidean distance in coordinate units is not a physical metric, so use network distance along pipes in metres.
+6. **No common baseline.** Each scenario has its own pipe parameters, base demands and demand patterns. Subtracting Scenario-1's pressures, as the old code did, mixes all of these differences into ΔH.
+7. **Scenario-1 has no `Leaks/` folder.** The old code assumed an empty folder; code must cope with it being absent.
+8. **The leak info CSV has a header row** (`Description , Value`), and its keys and values carry stray spaces. The old `pd.read_csv` call happened to work because of the header row.
+9. **Too little pre-leak history in a few cases.** 8 single-leak scenarios have under 14 days before the leak starts, so they need a post-leak baseline as a fallback.
+10. **Pipe 1 is never a label,** so there are 33 classes and chance accuracy is 1/33. Pipes 2 and 6 have only 2 pure single-leak scenarios each, plus 2 and 5 solo segments respectively.
+11. **The second leak in Scenario 273 lasts zero length** (start equals end). Harmless here, since only the first leak's solo segment is used.
 
 ## 6. Status of the SPEC assumptions A1–A14 (previous draft)
 

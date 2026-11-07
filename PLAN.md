@@ -2,20 +2,22 @@
 
 The work is split into small milestones, done in order. Each one ends with a **Verify** step that runs on CPU.
 
-- The data contract is verified: see SPEC.md §8 and `reports/data_inventory.md`.
+- The data contract is verified and enforced: see SPEC.md §8, `reports/data_inventory.md` and `leaksense validate-data`.
 - All data access goes through `LEAKSENSE_DATA_DIR`, set in the environment or in a git-ignored `.env` file.
+- Milestones M2–M15 were revised on 2026-11-08 to match the verified data. Each change is marked *(data: …)* with the fact that drove it.
 
-## Proposed layout
+## Layout
 
 ```
 src/leaksense/
   config.py  network.py  sensitivity.py  train.py  evaluate.py  placement.py  api.py  cli.py
-  data/{validate,index,features,splits}.py
+  data/contract.py  data/inp.py  data/validate.py      # done (M1)
+  data/{index,features,splits}.py
   models/{baselines,mlp,gbm,gat}.py
 web/index.html                 # single static page (vanilla JS + SVG)
 configs/*.yaml                 # cpu_small, mlp_cpu, gat_cpu, ablation_cpu, place_cpu, full
 splits/splits_v1.json          # committed
-tests/                         # tiny synthetic fixture dataset that mirrors the data contract
+tests/synthetic_data.py        # writes a tiny dataset in the exact LeakDB format (pytest fixture `synthetic`)
 reports/                       # summaries committed; reports/raw/ ignored
 notebooks/kaggle_run.ipynb     # calls the CLI only, no logic
 ```
@@ -25,114 +27,164 @@ notebooks/kaggle_run.ipynb     # calls the CLI only, no logic
 - Every report records its config, seed, git commit and data-manifest hash.
 - The locked test fold is used only in M13.
 - A number goes into the README only if a report file produced it.
-- `uv run pytest` passes without the real dataset, using the fixture under `tests/fixtures/HanoiOK/`. Tests that need the real data are marked `@pytest.mark.data` and skipped when `LEAKSENSE_DATA_DIR` is unset.
-- Features never use `leak_node*` columns, `Node_demands.csv` or `Link_flows.csv`. This is asserted in the feature builder and tested.
+- `uv run pytest` passes without the real dataset. Tests build a tiny dataset in a temp folder using `tests/synthetic_data.py`. Tests that need the real data are marked `@pytest.mark.data` and skipped when `LEAKSENSE_DATA_DIR` is unset.
+- **No oracle inputs.**
+  - Features never use `leak_node*` columns, `Node_demands.csv` or `Link_flows.csv`. This is asserted in the feature builder and tested.
+  - These are ground truth, used only for labels, distance metrics and reporting breakdowns. They are never inputs to a model or to sensor placement:
+    - each scenario's own `.inp` parameters
+    - leak flow
+    - leak type
+    - SNR
+  - *(data: D9, each scenario's real pipe parameters deviate up to ±20% from nominal, and an operator only knows the nominal network)*
 
 ---
 
-### M0: Repo scaffold and config
-- Run `git init`. Set up `pyproject.toml` for uv with Python 3.11 and the CPU wheel index for torch. Dependencies: torch, torch_geometric, wntr, pandas, pyarrow, scikit-learn, lightgbm, fastapi, uvicorn, python-dotenv, pytest, ruff.
-- `config.py` reads `LEAKSENSE_DATA_DIR` (required) and `LEAKSENSE_ARTIFACTS_DIR` (default `./artifacts`), loading `.env` if one exists. It fails with a clear message if the data dir is unset, missing, or lacks `Hanoi.inp`, `Labels.csv` or `Scenario-1/`.
-- `.gitignore` and `.env.example` already exist.
-- `leaksense --help` stub.
-- **Verify:**
-  ```
-  uv sync
-  uv run pytest            # includes config tests: unset var -> clear error; fixture dir -> ok
-  uv run python -c "import torch, torch_geometric, wntr; print(torch.__version__)"
-  uv run leaksense --help
-  git status               # shows no dataset files
-  ```
+### M0: Repo scaffold and config — DONE
+- uv project on Python 3.11 with CPU torch, `config.py` (`LEAKSENSE_DATA_DIR` is required and fails loudly if missing or invalid), and the `leaksense` CLI.
+- **Verified:** `uv sync`; `uv run pytest`; torch 2.14.1+cpu, torch-geometric 2.8.1 and wntr 1.5.0 all import; `leaksense --help` works; ruff is clean.
 
-### M1: Data validation (manual inspection done, now automated)
-- Manual inspection is complete; the results are in `reports/data_inventory.md`.
-- Add `leaksense validate-data`, which asserts D1–D10 from SPEC.md §8 using headers, sizes, info files and `.inp` header sections. The streaming checks only read full files when `--deep` is given.
-- It writes `reports/data_validation.json` and exits non-zero if the data has drifted from the contract.
-- Also quantify the exact-0.00 pressures: count them per scenario and check whether they line up with big leaks.
-- **Verify:**
-  - `uv run leaksense validate-data` reports that all checks pass in under 2 minutes.
-  - `uv run pytest tests/test_validate.py` checks that the fixture passes and that a deliberately corrupted fixture fails.
+### M1: Data validation — DONE
+- `leaksense validate-data [--deep]` asserts D1–D9 and reports D10–D11. It writes `reports/data_validation*.json` and exits non-zero on drift.
+- **Verified:** fast mode passes in 38 s; `--deep` passes in 265 s; manifest `6281be1c3cf2…`. Tests cover 10 corruption cases and confirm the dataset is only read.
 
 ### M2: Network graph
-- Load `$LEAKSENSE_DATA_DIR/Hanoi.inp` and build:
+- Build from the nominal `$LEAKSENSE_DATA_DIR/Hanoi.inp`. Reuse `leaksense.data.inp.read_network` and `merge_split_pipes`; do not add a second parser. WNTR isn't needed until M7.
+- One nominal graph serves every case. *(data: D9, topology is identical in all 500 scenarios)*
+- Build:
   - the node table and pipe table
   - the edge index
-  - edge features: nominal length, diameter, roughness, and the Hazen-Williams resistance
+  - edge features: nominal length, diameter, roughness, and Hazen-Williams resistance. Convert units for the resistance: diameter mm → m and flow L/s → m³/s. *(data: D5, `UNITS LPS`, diameter in mm)*
   - the pipe line-graph, for hop distance
-  - a length-weighted node graph, for network distance in metres
+  - a node graph weighted by nominal length, for network distance in metres
 - **Verify:**
-  - `uv run pytest tests/test_network.py` asserts 32 nodes, 34 pipes, a connected graph, and that pipe 1 connects 1 and 2.
+  - `uv run pytest tests/test_network.py`: 32 nodes, 34 pipes, connected, pipe 1 connects 1 and 2, and the resistance on a hand-computed pipe is correct.
   - `uv run leaksense network-info` prints a summary.
 
 ### M3: Case index and pipe labels
 - Write `artifacts/cases.parquet` with one row per case:
   - `scenario_id`, `kind` (pure or solo), `pipe` (2–34), `split_fraction`, `leak_type`, `area`
-  - `start`, `end` (for solo cases, the end is clipped to the second leak's start)
-  - baseline window and baseline kind (pre or post)
-  - quality flags
-- Read the label from the `Xl` link name and check it against the scenario `.inp`. Handle `Xll` correctly.
+  - `start`, `end` (for solo cases, `end` is clipped to the step before the second leak starts), `n_steps`
+  - `leak_flow_lps`: median over the case's active window. For reporting only. *(data: D11, leak type is not a size class, and SPEC H5 needs the leak-flow plot)*
+  - baseline window(s), `baseline_kind` (pre / post / combined), quality flags
+- Labels and split fractions come from `MergedPipe.leak_fraction`.
+  - In the 6 scenarios where the same pipe is split twice (`Xll`), map leak to pipe by leak ID, not by position in the chain.
+  - Cross-check every label against the `Xl` column in `Link_flows.csv`.
+  - *(data: D8, double-split scenarios 7, 46, 269, 297, 441, 474)*
+- **Baseline rule** (SPEC §5): a baseline window needs at least 14 leak-free days. Try these in order and use the first that qualifies:
+  1. pre-leak
+  2. post-leak (clear of every leak in the scenario)
+  3. pre and post combined
+  4. otherwise exclude the case
+
+  M3 reports how many cases each option covers and how many are excluded; it does not assume zero.
+  - *(data: 8 pure cases have under 14 days of pre-leak history, and 14 leaks end within a day of the year's end, so the old "post-leak fallback" is not always available. A solo case's post-window must also avoid the second leak.)*
+- Keep cases shorter than one window and record `n_steps`. *(data: 2 pure cases last under 24 h; the shortest is 18 h)*
 - **Verify:**
-  - `uv run leaksense build-index` prints 244 pure cases and about 245 solo cases.
+  - `uv run leaksense build-index` prints exactly 244 pure + 245 solo = 489 cases, minus the excluded ones, which are listed.
   - Every case has one pipe in 2–34.
-  - Per-pipe counts match the inventory: pipes 2 and 6 have 2 pure cases each, pipe 30 has 16.
-  - Fixture tests pass, including an `Xll` example.
+  - Per-pipe pure counts equal the D8 table in `reports/data_validation.json`.
+  - Per-pipe totals (pure + solo) are printed. They should range from 4 (pipe 2) to 26 (pipe 30), matching the inventory's ad-hoc count, which this milestone reproduces from code.
+  - Synthetic-data tests pass, including an `Xll` scenario and a case with no valid baseline.
 
 ### M4: Features and cache
-- Read only `Node_pressures.csv`, only the columns `2`…`32`, as float32.
-- Cache one `.npz` per scenario under `artifacts/`. A full cache is about 1.1 GB. `configs/cpu_small.yaml` uses a subset of scenarios and `max_windows_per_case`.
-- Compute ΔH against the same scenario's pre-leak baseline, matched by time-of-day and day-of-week. Fall back to a post-leak baseline when there are fewer than 14 days of pre-leak data.
-- Take windows (length and stride from config) of averaged ΔH. These suppress the roughly 0.5 m demand noise.
+- Read only `Node_pressures.csv`, only the columns `2`…`32`, as float32. Cache one `.npz` per scenario under `artifacts/`; the full cache is about 1.1 GB. `configs/cpu_small.yaml` uses a subset of scenarios.
+- **Measure the baseline method instead of assuming it.** Each scenario `.inp` holds a full-year, 30-min demand pattern for every junction, so a weekly cycle was never verified. Compare the leak-free ΔH noise (std on held-out leak-free days) for:
+  - time-of-day matching
+  - time-of-day + weekday matching
+  - the most recent N leak-free days with time-of-day matching
+
+  Choose the method by measurement, record it in the config and in `reports/baseline_choice.md`, and prefer the most recent leak-free days over the whole pre-leak period. *(data: leak start times are spread over the year, so baselines from months earlier may drift seasonally)*
+- **Measure the noise floor.** The 0.5 m step-to-step figure came from one scenario. Measure the per-junction leak-free ΔH std across scenarios, and set the window length and stride from it.
+- **Handle the dynamic range.** Small leaks move ΔH by about 1 m; big leaks move it by tens of metres, with leak flow up to 8,994 L/s.
+  - The cache stores raw ΔH.
+  - A configurable input transform is applied in the models, e.g. signed `log1p`, or per-sample scaling plus a magnitude channel. *(data: D11)*
+- Add per-case `snr` (largest mean |ΔH| over junctions ÷ leak-free std) to the case index. For reporting only.
+- **Windows:**
+  - A case shorter than one window gets one shorter window and a flag.
+  - Use `max_windows_per_case` and per-case sample weights so that each case counts equally in training, not only for CPU speed. *(data: case durations range from 18 h to 344 days)*
 - **Verify:**
   - `uv run leaksense build-features --config configs/cpu_small.yaml` finishes in minutes.
   - Tests:
     - ΔH ≈ 0 on a held-out leak-free window.
-    - No leak-active timestep contributes to the baseline.
+    - No leak-active timestep contributes to any baseline.
     - No `leak_node*` column is read.
-  - `uv run leaksense show-case <id>` prints the per-junction mean |ΔH|. For a big leak, the endpoints of the leaking pipe come out on top. Reference: Scenario 34, pipe 22, with node 22 at −61 m and node 21 at −33 m.
+  - `reports/baseline_choice.md` shows the measured noise for each method, and the chosen method.
+  - `uv run leaksense show-case <id>` prints per-junction mean ΔH. Reference: Scenario 34, pipe 22 (21→22), about 665 L/s. Expect node 22 at about −61 m and node 21 at about −33 m, with every other node within about 4 m. *(data: inventory §5)*
 
 ### M5: Splits
-- Grouped 5-fold CV, plus a locked test fold of about 15% of scenarios:
-  - grouped by **scenario ID**, so a scenario's case never crosses folds
-  - stratified by pipe, and by leak type where possible
-  - pipes with fewer than 5 cases (pipe 2 has 4, counting solo cases) are listed in the split report, not forced
+- Grouped 5-fold CV plus a locked test fold of about 15% of scenarios.
+  - Use `StratifiedGroupKFold`, grouped by **scenario ID** and stratified by pipe, with leak type and case kind balanced where possible.
+  - Each scenario currently gives exactly one case, so the groups are 1:1 with cases. Keep the scenario key anyway: detection (M15) adds several windows per scenario.
+- **Rare pipes:** pipes with fewer than 6 cases cannot appear in the test fold and in every CV fold.
+  - Handle them deterministically: such a pipe goes into the test fold only if at least 2 of its cases remain for training.
+  - List them in the split report.
+  - *(data: totals per pipe range from 4 (pipe 2) to 26 (pipe 30))*
 - Write `splits/splits_v1.json` and commit it.
 - **Verify:** `uv run leaksense make-splits` and `uv run pytest tests/test_splits.py`, which check:
   - no scenario overlap
-  - the seed is deterministic
-  - pipe and leak-type balance is printed
+  - a deterministic seed
+  - the rare-pipe rule
+  - a printed balance of pipe, leak type and case kind
 
 ### M6: Evaluation harness and non-learned rungs
-- Case-level aggregation of predictions.
-- Metrics: top-1/3/5, hop distance, network distance in metres from the predicted pipe's midpoint to the true leak point.
-- Bootstrap CIs, resampled by scenario.
-- Breakdown: overall, small vs big, pure vs solo.
-- Output as JSON and markdown.
-- Rungs: chance, class prior, and the largest-|ΔH| sensor mapped to its adjacent pipes.
+- Aggregate predictions to case level.
+- **Metrics:**
+  - top-1/3/5 accuracy
+  - hop distance
+  - network distance in metres. The true leak point is the split fraction applied to the **nominal** pipe length, and all distances use nominal lengths. *(data: D10, coordinates are not to scale)*
+- Bootstrap CIs, resampling by scenario.
+- **Breakdowns:**
+  - overall
+  - small vs big
+  - pure vs solo
+  - leak-flow terciles
+  - SNR terciles
+
+  *(data: D11, leak type does not cleanly separate leak sizes)*
+- Output: JSON and markdown.
+- **Rungs:**
+  - chance
+  - class prior
+  - `maxdh`: rank all 33 pipes by hop distance from the sensed junction with the largest |ΔH|, breaking ties by the next-largest sensed junction. This works at any k. Pipe 1 is never ranked.
 - **Verify:**
   - `uv run leaksense eval --model chance` gives top-1 ≈ 1/33.
-  - `uv run leaksense eval --model maxdh --k 31` writes `reports/maxdh.json`.
-  - `uv run pytest tests/test_metrics.py` tests the metrics on hand-computed examples, including network distance on a toy graph.
+  - `uv run leaksense eval --model maxdh --k 31` writes `reports/maxdh.json`, including every breakdown.
+  - `uv run pytest tests/test_metrics.py` checks hand-computed examples, including network distance with a leak at a split fraction on a toy graph.
 
 ### M7: Sensitivity matrix (physics input)
-- On the nominal network in WNTR, simulate a leak at the midpoint of each of the 33 leak-eligible pipes, at a representative small size and a representative big size taken from the inventory's leak areas. Use a fixed demand snapshot. No scenario ground truth is used.
-- Result: S, a 31 junctions × 33 pipes matrix for each leak size.
-- New rung `sigmatch`: cosine similarity between the masked ΔH and the columns of S.
+- On the nominal network, simulate one leak per eligible pipe (33 pipes).
+  - The leak is a fixed demand at a junction inserted at the pipe's midpoint, run with `EpanetSimulator`.
+  - Do not use `add_leak` with `EpanetSimulator`. EPANET ignores WNTR leak models, which was a bug in the old repo.
+  - *(data: within a leak, leak flow is roughly constant)*
+- Use two sizes, the median leak flows from D11: about 97 L/s (small) and about 980 L/s (big). Use flows, not leak areas, because the area-to-flow relationship depends on pressure.
+- **Units:** WNTR works in SI internally, so convert L/s to m³/s. *(data: D5, `UNITS LPS`)*
+- **Demand snapshot:** the nominal `Hanoi.inp` has no patterns and DURATION 0, so its nominal base demands are the snapshot.
+- If any simulated pressure goes negative at the big size, record it as a warning in the report.
+- **Result:** S, a 31 junctions × 33 pipes matrix for each size.
+- New rung `sigmatch`: cosine similarity between the masked ΔH and each column of S.
 - **Verify:**
   - `uv run leaksense build-sensitivity` finishes in under 5 minutes on CPU.
-  - A test confirms that the largest entry in each column of S is at an endpoint of that pipe.
+  - Tests:
+    - every entry of S is a pressure drop (≤ 0)
+    - no two columns are identical
+    - `@pytest.mark.data`: of all big-size columns of S, the one for pipe 22 is the most cosine-similar to Scenario 34's observed mean ΔH
+  - This replaces the earlier test "the largest entry is at an endpoint of the pipe". That claim was never verified, and drops can be larger at dead ends further downstream.
   - `uv run leaksense eval --model sigmatch --k 31` writes a report.
 
 ### M8: Learned tabular rungs (MLP, GBM) with masking
-- Input `[ΔH·m, m]` over the 31 junctions, with a mask size k drawn uniformly from 1 to 31.
-- Output: 33 classes.
+- Input is `[ΔH·m, m]` over the 31 junctions, after the M4 input transform. The mask size k is drawn uniformly from 1 to 31. The output is 33 classes.
+- Class-weighted loss, with the weights computed on each training fold. *(data: 4–26 cases per pipe)*
+- Case-weighted sampling from M4.
 - **Verify:**
   - `uv run leaksense train --config configs/mlp_cpu.yaml` finishes in under 10 minutes on CPU.
   - The model overfits a set of 5 cases.
-  - Accuracy-vs-k curves are written to `reports/`.
+  - Accuracy-vs-k curves, with all M6 breakdowns, are written to `reports/`.
 
 ### M9: Masked GAT
-- 4 GATv2 layers encode the nodes. The reservoir is a node with mask = 0.
-- Pipe head: the two endpoint embeddings plus the edge features give 33 logits. Pipe 1 is excluded.
+- 4 GATv2 layers encode the nodes.
+- The reservoir stays in the graph with features [0, 0] and mask 0. *(data: D5, its pressure is always 0)*
+- Pipe head: the two endpoint embeddings plus the nominal edge features give 33 logits. Pipe 1 is excluded.
+- Use the same class weights, case weights and input transform as M8.
 - **Verify:**
   - `uv run pytest tests/test_gat.py` checks:
     - output shapes
@@ -141,30 +193,39 @@ notebooks/kaggle_run.ipynb     # calls the CLI only, no logic
   - `uv run leaksense train --config configs/gat_cpu.yaml --fold 0` runs as a smoke test.
 
 ### M10: Physics-input GAT and ablation
-- Add the S-based prior in three places: as node and edge features, and as a per-pipe prior logit.
-- Ablate plain vs physics, with CIs, broken down by leak type.
+- Add the S-based prior three ways: as node features, as edge features, and as a per-pipe prior logit.
+- Ablate plain vs physics, with CIs, broken down by leak type and by leak-flow tercile.
 - **Verify:** `uv run leaksense ablate --config configs/ablation_cpu.yaml` writes `reports/ablation.md`.
 
 ### M11: Sensor placement
 - Greedy forward selection over the 31 junctions. The masked model stays fixed, and each step maximizes top-3 accuracy on the inner-validation cases.
-- Comparisons:
+- **Comparisons:**
   - 100 random placements per k
   - a greedy that maximizes sensitivity coverage
-- Evaluate on the outer held-out cases at k ∈ {2, 3, 4, 6, 8, 12, 16}, overall and for small leaks only.
+- Evaluate on outer held-out cases at k ∈ {2, 3, 4, 6, 8, 12, 16}:
+  - overall
+  - small leaks only
+  - by leak-flow tercile
+- Report how stable the chosen sensor sets are across folds: the overlap of selected junctions. Each outer fold has only about 80 inner-validation cases, so greedy choices may be noisy.
 - **Verify:**
   - `uv run leaksense place --config configs/place_cpu.yaml` writes `reports/placement.json` and a curve PNG.
   - A test checks that greedy placement is deterministic for a fixed seed.
 
 ### M12: Full run on Kaggle (optional)
 - `notebooks/kaggle_run.ipynb` sets `LEAKSENSE_DATA_DIR` to the Kaggle input path, installs the repo, and runs the CLI with `configs/full.yaml`. The notebook contains no logic of its own.
-- **Verify:** download the artifacts, run `uv run leaksense eval --from-artifacts <dir>` locally on the CPU subset, and check the numbers match within tolerance.
+- **First, run `leaksense validate-data` on Kaggle.** Stop if the manifest sha256 is not `6281be1c3cf2…`. *(data: the old notebooks used a third-party Kaggle copy whose contents were never verified)*
+- **Verify:**
+  - The Kaggle log shows that validate-data passed with the expected manifest.
+  - Download the artifacts, run `uv run leaksense eval --from-artifacts <dir>` locally on the CPU subset, and check the numbers match within tolerance.
 
 ### M13: Locked test and final report
 - Evaluate the test fold exactly once.
 - Write `reports/FINAL.md` covering:
-  - every rung, broken down by small/big and pure/solo
+  - every rung, with all M6 breakdowns
   - the placement curves
+  - the accuracy-vs-leak-flow plot (SPEC H5)
   - the status of H1–H5
+  - the number of excluded cases (M3) and the chosen baseline method (M4)
   - limitations
 - **Verify:** `uv run leaksense final-report`, then tag the commit.
 
@@ -175,12 +236,21 @@ notebooks/kaggle_run.ipynb     # calls the CLI only, no logic
   - `/cases` (held-out cases only)
   - `/predict` (case ID + sensor set → top-k pipes)
   - `/curves`
+- Serve held-out cases from the cached features in `artifacts/`, so the 11 GB raw dataset isn't needed at serve time.
+- The map is drawn from the `.inp` coordinates. That is fine for display, but distances shown always come from pipe lengths. *(data: D10)*
 - `web/index.html` is served as a static page and shows only data from saved reports and artifacts.
 - **Verify:**
   - `uv run pytest tests/test_api.py` passes, using the FastAPI TestClient.
   - Run `uv run leaksense serve`, open http://localhost:8000, choose a budget and a case, and check that predictions and curves appear.
 
 ### M15: Stretch goals (detection, overlapping-leak stress test)
-- **Detection:** add a no-leak class built from leak-free windows that do not overlap any baseline window. Metrics: false-positive rate and time to detect.
-- **Overlap stress test:** take the periods of two-leak scenarios where both leaks are active (evaluation only). Check whether either leak appears in the top-k.
+- **Detection.**
+  - Scenario-1 is the only scenario with no leak at all. So the no-leak class comes from leak-free stretches of the leak scenarios, excluding baseline windows and a buffer before each leak starts.
+  - Ground truth is the per-scenario `Labels.csv`, which is the union of active leaks (D7).
+  - Before choosing the time-to-detect metric, check across all leaks whether leak flow ramps up. In the sampled leaks it was constant from the first step, in which case time-to-detect mostly measures the window length.
+  - Metrics: false-positive rate, and time-to-detect if it turns out to be meaningful.
+- **Overlap stress test (evaluation only).**
+  - First count the periods where both leaks are active and how long they last. Scenario 273's second leak lasts zero steps.
+  - Check whether either leak appears in the top-k.
+  - Report the 6 scenarios where both leaks are on the same pipe separately, because "either leak in top-k" is trivial for them.
 - **Verify:** `uv run leaksense eval --task detect` and `uv run leaksense eval --stress overlap`.

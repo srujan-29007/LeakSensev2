@@ -1,0 +1,301 @@
+{
+  "leaksense_version": "0.1.0",
+  "generated_at": "2026-11-07T19:22:34+00:00",
+  "deep": false,
+  "ok": true,
+  "manifest": {
+    "folder": "HanoiOK",
+    "n_files": 4510,
+    "total_bytes": 11123746633,
+    "sha256": "6281be1c3cf2ad971298fdcd672b17e602da7e5dcca86d23c52b924ecf5dccdf"
+  },
+  "contract": {
+    "n_scenarios": 500,
+    "label_counts": [
+      [
+        0,
+        1
+      ],
+      [
+        1,
+        244
+      ],
+      [
+        2,
+        255
+      ]
+    ],
+    "n_rows": 17520,
+    "first_timestamp": "2024-01-01 00:00:00",
+    "last_timestamp": "2024-12-30 23:30:00",
+    "step_minutes": 30,
+    "duration_text": "8760 hours",
+    "time_step_text": "30.0 min",
+    "reservoir": "1",
+    "junctions": [
+      "2",
+      "3",
+      "4",
+      "5",
+      "6",
+      "7",
+      "8",
+      "9",
+      "10",
+      "11",
+      "12",
+      "13",
+      "14",
+      "15",
+      "16",
+      "17",
+      "18",
+      "19",
+      "20",
+      "21",
+      "22",
+      "23",
+      "24",
+      "25",
+      "26",
+      "27",
+      "28",
+      "29",
+      "30",
+      "31",
+      "32"
+    ],
+    "pipes": [
+      "1",
+      "2",
+      "3",
+      "4",
+      "5",
+      "6",
+      "7",
+      "8",
+      "9",
+      "10",
+      "11",
+      "12",
+      "13",
+      "14",
+      "15",
+      "16",
+      "17",
+      "18",
+      "19",
+      "20",
+      "21",
+      "22",
+      "23",
+      "24",
+      "25",
+      "26",
+      "27",
+      "28",
+      "29",
+      "30",
+      "31",
+      "32",
+      "33",
+      "34"
+    ],
+    "never_leaking_pipes": [
+      "1"
+    ],
+    "units": "LPS",
+    "param_tolerance": 0.2,
+    "leak_types": [
+      "small",
+      "big"
+    ],
+    "leak_info_keys": [
+      "Leak Node",
+      "Leak Area",
+      "Leak Diameter",
+      "Leak Type",
+      "Leak Start",
+      "Leak End"
+    ]
+  },
+  "checks": [
+    {
+      "id": "D1",
+      "title": "Top-level layout: Hanoi.inp, Labels.csv, Scenario-1..N with expected label counts",
+      "status": "pass",
+      "n_errors": 0,
+      "errors": [],
+      "details": {
+        "label_counts": {
+          "0": 1,
+          "1": 244,
+          "2": 255
+        },
+        "n_scenarios": 500,
+        "other_entries": []
+      }
+    },
+    {
+      "id": "D2",
+      "title": "Per-scenario files present; Leaks/ present iff the scenario has leaks",
+      "status": "pass",
+      "n_errors": 0,
+      "errors": [],
+      "details": {}
+    },
+    {
+      "id": "D3",
+      "title": "Row count, timestamps and time step identical everywhere",
+      "status": "pass",
+      "n_errors": 0,
+      "errors": [],
+      "details": {
+        "n_rows": 17520,
+        "first": "2024-01-01 00:00:00",
+        "last": "2024-12-30 23:30:00",
+        "step_minutes": 30,
+        "deep_row_counts": false
+      }
+    },
+    {
+      "id": "D4",
+      "title": "CSV column names and order",
+      "status": "pass",
+      "n_errors": 0,
+      "errors": [],
+      "details": {}
+    },
+    {
+      "id": "D5",
+      "title": "Units, reservoir pressure, no NaN / negative pressures",
+      "status": "pass",
+      "n_errors": 0,
+      "errors": [],
+      "details": {
+        "units": "LPS",
+        "headloss": "H-W",
+        "note": "NaN/negative/reservoir/zero-pressure checks need --deep"
+      }
+    },
+    {
+      "id": "D6",
+      "title": "Leak info files: header, keys, type, ISO start/end",
+      "status": "pass",
+      "n_errors": 0,
+      "errors": [],
+      "details": {}
+    },
+    {
+      "id": "D7",
+      "title": "Leak demand non-zero exactly over [start, end]; Labels.csv = union of leaks",
+      "status": "pass",
+      "n_errors": 0,
+      "errors": [],
+      "details": {
+        "note": "leak demand window check needs --deep"
+      }
+    },
+    {
+      "id": "D8",
+      "title": "Each leak splits pipe X into X, Xl(, Xll); label X in the leak-eligible pipes",
+      "status": "pass",
+      "n_errors": 0,
+      "errors": [],
+      "details": {
+        "n_leaks": 754,
+        "pipes_in_single_leak_scenarios": 33,
+        "single_leak_scenarios_per_pipe": {
+          "2": 2,
+          "3": 5,
+          "4": 6,
+          "5": 5,
+          "6": 2,
+          "7": 5,
+          "8": 8,
+          "9": 8,
+          "10": 9,
+          "11": 4,
+          "12": 9,
+          "13": 8,
+          "14": 9,
+          "15": 6,
+          "16": 9,
+          "17": 12,
+          "18": 12,
+          "19": 7,
+          "20": 5,
+          "21": 5,
+          "22": 4,
+          "23": 6,
+          "24": 8,
+          "25": 12,
+          "26": 13,
+          "27": 5,
+          "28": 7,
+          "29": 6,
+          "30": 16,
+          "31": 8,
+          "32": 9,
+          "33": 9,
+          "34": 5
+        },
+        "never_leaking_observed": [
+          "1"
+        ],
+        "double_split_scenarios": [
+          7,
+          46,
+          269,
+          297,
+          441,
+          474
+        ]
+      }
+    },
+    {
+      "id": "D9",
+      "title": "Topology and coordinates equal nominal; parameters within tolerance",
+      "status": "pass",
+      "n_errors": 0,
+      "errors": [],
+      "details": {
+        "uncertainty_levels_pct": [
+          5.0,
+          10.0,
+          15.0,
+          20.0
+        ],
+        "n_uncertainty_combinations": 64,
+        "max_abs_rel_deviation": {
+          "diameter": 0.199982,
+          "length": 0.199932,
+          "roughness": 0.199963
+        },
+        "max_abs_rel_base_demand_deviation": 0.199971
+      }
+    },
+    {
+      "id": "D10",
+      "title": "Coordinates vs pipe lengths (informational)",
+      "status": "info",
+      "n_errors": 0,
+      "errors": [],
+      "details": {
+        "pipe_length_over_coordinate_distance": {
+          "min": 0.128,
+          "median": 1.703,
+          "max": 5.992
+        },
+        "conclusion": "coordinates are not to scale; use pipe lengths"
+      }
+    }
+  ],
+  "stats": {
+    "leak_types": {
+      "small": 385,
+      "big": 369
+    }
+  },
+  "elapsed_seconds": 38.3
+}

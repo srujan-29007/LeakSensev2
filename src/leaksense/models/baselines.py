@@ -83,4 +83,59 @@ class MaxDH:
         return -rank
 
 
-MODELS = {"chance": Chance, "prior": Prior, "maxdh": MaxDH}
+class SigMatch:
+    """Cosine between the case-mean ΔH and each pipe's sensitivity column, on sensed junctions.
+
+    ``S`` is (31 junctions x 33 pipes x sizes x levels) from ``leaksense build-sensitivity``.
+    The leak size is unknown, so the score is the max over sizes; ``levels="mid"`` uses the
+    median demand level, ``levels="all"`` takes the max over all levels too.
+    """
+
+    name = "sigmatch"
+
+    def __init__(self, net: Network, sensitivity: dict | None = None, levels: str = "mid") -> None:
+        if sensitivity is None:
+            raise ValueError("sigmatch needs the sensitivity matrix (leaksense build-sensitivity)")
+        if list(sensitivity["pipes"]) != net.leak_pipe_ids:
+            raise ValueError("sensitivity pipes do not match the network's leak-eligible pipes")
+        if list(sensitivity["junctions"]) != net.sensor_ids:
+            raise ValueError("sensitivity junctions do not match the network's sensors")
+        S = np.asarray(sensitivity["S"], dtype=float)
+        lv = list(sensitivity["levels"])
+        if levels == "mid":
+            S = S[..., [lv.index("mid")]]
+        elif levels != "all":
+            raise ValueError(f"levels must be 'mid' or 'all', not {levels!r}")
+        # (31 x 33 x n_variants): every (size, level) column is a candidate signature
+        self.S = S.reshape(S.shape[0], S.shape[1], -1)
+        self.n = S.shape[1]
+        self.name = "sigmatch" if levels == "mid" else "sigmatch_all"
+
+    def fit(self, train: pd.DataFrame) -> None:
+        pass
+
+    def case_scores(self, x: np.ndarray, mask: np.ndarray) -> np.ndarray:
+        m = np.asarray(mask, dtype=bool)
+        v = np.asarray(x, dtype=float).mean(axis=0)[m]
+        cols = self.S[m]  # (n_sensed x 33 x variants)
+        nv = np.linalg.norm(v)
+        nc = np.linalg.norm(cols, axis=0)
+        if nv == 0:
+            return np.zeros(self.n)
+        cos = np.einsum("j,jpv->pv", v, cols) / (nv * np.where(nc > 0, nc, np.inf))
+        return np.round(cos.max(axis=1), 12)  # rounding makes numerically equal scores tie
+
+
+class SigMatchAll(SigMatch):
+    def __init__(self, net: Network, sensitivity: dict | None = None) -> None:
+        super().__init__(net, sensitivity, levels="all")
+
+
+MODELS = {
+    "chance": Chance,
+    "prior": Prior,
+    "maxdh": MaxDH,
+    "sigmatch": SigMatch,
+    "sigmatch_all": SigMatchAll,
+}
+NEEDS_SENSITIVITY = {"sigmatch", "sigmatch_all"}

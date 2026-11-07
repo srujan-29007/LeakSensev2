@@ -68,7 +68,21 @@ def cmd_eval(args: argparse.Namespace) -> int:
         raise ConfigError(f"--k values must be in 1..{n_sensors}")
     ks = [min(k, n_sensors) for k in ks]
 
-    model = MODELS[args.model](net)
+    from leaksense import sensitivity as sens
+    from leaksense.models.baselines import NEEDS_SENSITIVITY
+
+    resources = {}
+    if args.model in NEEDS_SENSITIVITY:
+        manifest_sha = meta.get("data_manifest_sha256") or ""
+        spath = sens.sensitivity_path(get_artifacts_dir(), manifest_sha)
+        if not spath.is_file():
+            raise ConfigError(
+                f"no sensitivity matrix at {spath}; run `leaksense build-sensitivity`"
+            )
+        resources["sensitivity"] = sens.load(spath)
+        if str(resources["sensitivity"]["manifest"]) != manifest_sha:
+            raise ConfigError("sensitivity matrix and features come from different datasets")
+    model = MODELS[args.model](net, **resources)
     results, preds = evaluate(
         model, es, ks, draws=args.draws, n_boot=args.bootstrap, seed=args.seed
     )

@@ -1,9 +1,9 @@
 {
   "leaksense_version": "0.1.0",
-  "generated_at": "2026-11-07T21:01:17+00:00",
+  "generated_at": "2026-11-07T21:06:26+00:00",
   "git": {
-    "commit": "5464666fbc546ee04e12b4ee0bec9964a28d7471",
-    "dirty": true
+    "commit": "9ade4334bf0c73b2384eba8d4fc5db24bc159ccd",
+    "dirty": false
   },
   "data_manifest_sha256": "6281be1c3cf2ad971298fdcd672b17e602da7e5dcca86d23c52b924ecf5dccdf",
   "config": {
@@ -12,7 +12,7 @@
     "short_case_steps": 48
   },
   "seed": null,
-  "elapsed_seconds": 5.9,
+  "elapsed_seconds": 7.4,
   "n_scenarios": 500,
   "candidates": {
     "pure": 244,

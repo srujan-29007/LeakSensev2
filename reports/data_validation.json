@@ -1,6 +1,6 @@
 {
   "leaksense_version": "0.1.0",
-  "generated_at": "2026-11-07T20:58:42+00:00",
+  "generated_at": "2026-11-07T21:03:39+00:00",
   "deep": false,
   "ok": true,
   "manifest": {
@@ -298,9 +298,9 @@
     }
   },
   "git": {
-    "commit": "5464666fbc546ee04e12b4ee0bec9964a28d7471",
+    "commit": "9ade4334bf0c73b2384eba8d4fc5db24bc159ccd",
     "dirty": false
   },
   "seed": null,
-  "elapsed_seconds": 19.8
+  "elapsed_seconds": 16.4
 }

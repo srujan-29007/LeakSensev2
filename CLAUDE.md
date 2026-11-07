@@ -19,7 +19,8 @@ uv run pytest                            # all tests; uses tests/fixtures, no re
 uv run pytest tests/test_metrics.py::test_name   # single test
 uv run pytest -m data                    # tests that need the real dataset
 uv run ruff check . && uv run ruff format .
-uv run leaksense --help                  # CLI: validate-data, build-index, build-features, make-splits,
+uv run leaksense --help                  # CLI: validate-data, network-info, build-index, make-splits,
+                                         # baseline-study, build-features, show-case,
                                          # eval, train, ablate, place, final-report, serve
 ```
 

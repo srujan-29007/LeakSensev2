@@ -100,7 +100,7 @@ notebooks/kaggle_run.ipynb     # calls the CLI only, no logic
 - **Handle the dynamic range.** Small leaks move ΔH by about 1 m; big leaks move it by tens of metres, with leak flow up to 8,994 L/s.
   - The cache stores raw ΔH.
   - A configurable input transform is applied in the models, e.g. signed `log1p`, or per-sample scaling plus a magnitude channel. *(data: D11)*
-- Add per-case `snr` (largest mean |ΔH| over junctions ÷ leak-free std) to the case index. For reporting only.
+- Add per-case `snr` (largest mean |ΔH| over junctions ÷ leak-free window noise, estimated from 3 held-out days of the case's own baseline). It is written to `artifacts/features/<config-hash>/case_stats.parquet`, next to the features it is computed from, not to `cases.parquet`. For reporting only.
 - **Windows:**
   - A case shorter than one window gets one shorter window and a flag.
   - Use `max_windows_per_case` and per-case sample weights so that each case counts equally in training, not only for CPU speed. *(data: case durations range from 18 h to 344 days)*
@@ -148,7 +148,7 @@ notebooks/kaggle_run.ipynb     # calls the CLI only, no logic
   - pure vs solo
   - baseline kind: pre vs post/combined *(M4: post baselines use after-the-leak data)*
   - leak-flow terciles
-  - SNR terciles
+  - SNR terciles (from `artifacts/features/<config-hash>/case_stats.parquet`)
 
   *(data: D11, leak type does not cleanly separate leak sizes)*
 - Output: JSON and markdown.

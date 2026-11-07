@@ -18,7 +18,18 @@ def git_commit(cwd: str | Path | None = None) -> dict:
     try:
         return {
             "commit": run("rev-parse", "HEAD"),
-            "dirty": bool(run("status", "--porcelain", "--untracked-files=no")),
+            # Generated outputs (reports/, splits/) do not make the code dirty.
+            "dirty": bool(
+                run(
+                    "status",
+                    "--porcelain",
+                    "--untracked-files=no",
+                    "--",
+                    ".",
+                    ":!reports",
+                    ":!splits",
+                )
+            ),
         }
     except (OSError, subprocess.CalledProcessError):
         return {"commit": None, "dirty": None}

@@ -88,7 +88,7 @@ notebooks/kaggle_run.ipynb     # calls the CLI only, no logic
   - Synthetic-data tests pass, including an `Xll` scenario and a case with no valid baseline.
 - **Verified:** `build-index` takes about 6 s and writes `reports/case_index.json`. It finds 244 pure + 245 solo = 489 cases with 0 excluded. Baselines: 462 pre, 25 post (8 pure, 17 solo), 2 combined. 10 two-leak scenarios have no solo case. Per-pipe pure counts match D8. 9/9 index tests pass.
 
-### M4: Features and cache
+### M4: Features and cache — DONE
 - Read only `Node_pressures.csv`, only the columns `2`…`32`, as float32. Cache one `.npz` per scenario under `artifacts/`; the full cache is about 1.1 GB. `configs/cpu_small.yaml` uses a subset of scenarios.
 - **Measure the baseline method instead of assuming it.** Each scenario `.inp` holds a full-year, 30-min demand pattern for every junction, so a weekly cycle was never verified at the junction level. Mean total demand does vary by weekday, by about ±8% (Fri 825, Sun 695 L/s; D12), which supports testing weekday matching. Compare the leak-free ΔH noise (std on held-out leak-free days) for:
   - time-of-day matching
@@ -112,8 +112,14 @@ notebooks/kaggle_run.ipynb     # calls the CLI only, no logic
     - No `leak_node*` column is read.
   - `reports/baseline_choice.md` shows the measured noise for each method, and the chosen method.
   - `uv run leaksense show-case <id>` prints per-junction mean ΔH. Reference: Scenario 34, pipe 22 (21→22), about 665 L/s. Expect node 22 at about −61 m and node 21 at about −33 m, with every other node within about 4 m. *(data: inventory §5)*
+- **Verified:**
+  - `baseline-study` (122 s, Scenario-1 + 419 non-test scenarios) chose time of day × weekday, 14 days, mean, W = 48, stride 24, and a 7-day maximum lag. Leak-free noise per window is 0.149 m. The Leak Start check is clean.
+  - Small leaks: the median largest |ΔH| is 0.90 m, and 72% exceed 3× the window noise. All big leaks do.
+  - `build-features` takes 2 s on `cpu_small` and 14 s on the full set (489 cases, 6,244 windows, 13 per case at the median). Only S069 gets a short window. The pressure cache is 1.0 GB.
+  - `show-case S034-pure`: node 22 −60.9 m, node 21 −33.4 m, all others ≤ 4.2 m.
+  - 13 feature tests pass, including the poison test (rows outside the baseline cannot change ΔH) and the read-only-pressures/labels test.
 
-### M5: Splits
+### M5: Splits — DONE (run before M4's measurements, so they never see the locked test fold)
 - Grouped 5-fold CV plus a locked test fold of about 15% of scenarios.
   - Use `StratifiedGroupKFold`, grouped by **scenario ID** and stratified by pipe, with leak type and case kind balanced where possible.
   - Each scenario currently gives exactly one case, so the groups are 1:1 with cases. Keep the scenario key anyway: detection (M15) adds several windows per scenario.
@@ -127,6 +133,7 @@ notebooks/kaggle_run.ipynb     # calls the CLI only, no logic
   - a deterministic seed
   - the rare-pipe rule
   - a printed balance of pipe, leak type and case kind
+- **Verified:** 70 test scenarios (14.3%) and folds of 84/84/83/84/84 cases. The worst fold is 3.8 points off on the small-leak and solo shares (best of 50 seeds). Pipe 2 (4 cases) is the only rare pipe: it has 0 test cases and is in 4 of the 5 folds. 5/5 split tests pass.
 
 ### M6: Evaluation harness and non-learned rungs
 - Aggregate predictions to case level.
@@ -139,6 +146,7 @@ notebooks/kaggle_run.ipynb     # calls the CLI only, no logic
   - overall
   - small vs big
   - pure vs solo
+  - baseline kind: pre vs post/combined *(M4: post baselines use after-the-leak data)*
   - leak-flow terciles
   - SNR terciles
 

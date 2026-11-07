@@ -1,6 +1,6 @@
 # LeakSense: Specification
 
-- **Status:** M0–M3 are done. The data contract is verified and enforced by `leaksense validate-data` (see `reports/data_inventory.md`).
+- **Status:** M0–M5 are done (M5 ran before M4's measurements). The data contract is verified and enforced by `leaksense validate-data` (see `reports/data_inventory.md`).
 - **Last updated:** 2026-11-08
 
 ## 1. Problem
@@ -117,7 +117,10 @@ A single leak has already been detected on the Hanoi water network (LeakDB). Pre
   - `leak_node*` columns are **never** used.
   - Demand and flow CSVs are never model inputs.
 - **ΔH.** Pressure minus a leak-free baseline taken from the same scenario.
-  - **Slot matching** is chosen in M4 by measuring the noise of ΔH on held-out leak-free data. The starting hypothesis is matching on time of day and day of week. A weekly demand cycle has not been verified, because each scenario has a full-year demand pattern for every junction.
+  - **Slot matching** was chosen in M4 by measurement on leak-free pseudo-cases from Scenario-1 and the 419 non-test scenarios (`reports/baseline_choice.md`). **Time of day × weekday**, using the per-slot **mean** of the **14 leak-free days nearest the case**, had the lowest window noise: 0.149 m, against 0.202 m for time of day only and 0.263 m for weekday with all history. It was also best for cases with only 14–28 days of history.
+  - **Window:** 48 steps (24 h), stride 24, as a mean over the window. The leak-free noise is 0.98 m per step and 0.149 m per 24-h window.
+  - **Drift:** baseline error grows with the distance from the baseline. With 24-h windows the median |bias| is 0.09 m in the first week, 0.16 m in the second and about 0.45 m after 3 months. So **samples are taken only within 7 days of the baseline**: the start of the case for pre baselines, the end for post, both ends for combined.
+  - **Leak Start:** out of sample, ΔH at start−4 … start−1 is at noise level (median 0.43–0.60 m mean |ΔH| over big-leak cases) and jumps at start (7.9 m). So no guard step is needed.
   - **Baseline window.** It needs at least 14 leak-free days. Take the first option that qualifies:
     1. the pre-leak period, preferring the most recent days
     2. the post-leak period, clear of every leak in the scenario
@@ -137,7 +140,7 @@ A single leak has already been detected on the Hanoi water network (LeakDB). Pre
 
 How every metric is reported:
 - Mean ± 95% bootstrap CI over cases, resampled by scenario and pooled across the 5 outer CV folds.
-- Broken down three ways: **overall**, **by leak type** (small / big), and **by case kind** (pure / solo).
+- Broken down four ways: **overall**, **by leak type** (small / big), **by case kind** (pure / solo), and **by baseline kind** (pre vs post/combined). A post baseline uses data from after the leak, which an operator would not have in real time, so headline numbers are also shown for pre-baseline cases only.
 - The locked test fold is evaluated exactly once, in M13.
 
 ### Required deliverables

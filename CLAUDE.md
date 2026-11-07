@@ -42,7 +42,7 @@ uv run leaksense --help                  # CLI: validate-data, build-index, buil
   - Splits are grouped by **scenario ID**.
   - Metrics are aggregated **per case**, not per timestep.
   - Every metric is reported overall, by small vs big leak, and by pure vs solo case.
-- **ΔH baseline.** Use a window of at least 14 leak-free days from the same scenario. Take the first that qualifies: pre-leak (most recent days first), post-leak, pre and post combined; otherwise exclude the case and count it. The baseline must never overlap a timestep where a leak is active. Slot matching (time of day, or time of day plus weekday) is chosen in M4 by measurement. Do not assume a weekly cycle.
+- **ΔH baseline.** Use a window of at least 14 leak-free days from the same scenario. Take the first that qualifies: pre-leak (most recent days first), post-leak, pre and post combined; otherwise exclude the case and count it. The baseline must never overlap a timestep where a leak is active. Slot matching was measured in M4: time of day × weekday, mean of the 14 leak-free days nearest the case, 24-h windows, samples only within 7 days of the baseline (`reports/baseline_choice.md`). Change it only by re-running `leaksense baseline-study`.
   - Never use Scenario-1 as a global baseline: every scenario has its own pipe parameters (±20%) and its own demands.
 - **Distances.** `.inp` coordinates are not to scale. Distance metrics must use pipe lengths (network distance in metres) or hop counts, never Euclidean distance between coordinates.
 - **Locked test fold.** Touch it only in M13.

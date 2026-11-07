@@ -1,0 +1,2134 @@
+{
+  "leaksense_version": "0.1.0",
+  "generated_at": "2026-11-07T20:49:22+00:00",
+  "git": {
+    "commit": "8915c323c59a6cc516fd859ec4861aec2036da99",
+    "dirty": false
+  },
+  "data_manifest_sha256": "6281be1c3cf2ad971298fdcd672b17e602da7e5dcca86d23c52b924ecf5dccdf",
+  "config": {
+    "name": "full",
+    "seed": 0,
+    "n_scenarios": null,
+    "include_scenarios": [],
+    "features": {
+      "slot": "tod_weekday",
+      "baseline_days": 14,
+      "estimator": "mean",
+      "window": 48,
+      "stride": 24,
+      "max_lag_days": 7,
+      "max_windows_per_case": 32,
+      "pre_guard_steps": 0,
+      "snr_holdout_days": 3.0
+    }
+  },
+  "seed": 0,
+  "elapsed_seconds": 123.4,
+  "n_source_scenarios": 420,
+  "excluded_test_scenarios": 70,
+  "rules": {
+    "method": "lowest median window RMS at W=48; within 5%, the simpler slot/estimator, then the lower noise",
+    "window": "smallest W with median RMS <= 0.2 m",
+    "stride": "W/2",
+    "max_lag_days": "largest lag up to which median |bias| < the lag 0-7 d RMS"
+  },
+  "decision": {
+    "method_by_stratum": {
+      "history 14-28d": "tod_weekday/14d/mean",
+      ">28d": "tod_weekday/14d/mean"
+    },
+    "window": 48,
+    "stride": 24,
+    "max_lag_days": 7.0
+  },
+  "chosen_features": {
+    "slot": "tod_weekday",
+    "baseline_days": 14,
+    "estimator": "mean",
+    "window": 48,
+    "stride": 24,
+    "max_lag_days": 7.0,
+    "max_windows_per_case": 32,
+    "pre_guard_steps": 0,
+    "snr_holdout_days": 3.0
+  },
+  "leak_free_noise_m": {
+    "per_step": 0.9836850667832082,
+    "window_48": 0.14928627644924108
+  },
+  "start_check": {
+    "n_cases": 85,
+    "baseline_ends_at": "start-5",
+    "start-4": 0.5832311568721649,
+    "start-3": 0.5958586662046371,
+    "start-2": 0.42953675793063256,
+    "start-1": 0.5955902837937878,
+    "start": 7.927774983067667,
+    "start+1": 8.974227320763372
+  },
+  "methods": [
+    {
+      "stratum": "history 14-28d",
+      "method": "tod/7d/mean",
+      "W": 1,
+      "n_pseudo": 375,
+      "median_rms_m": 0.7562325391556278,
+      "p95_rms_m": 1.2340218663555995
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod/7d/mean",
+      "W": 6,
+      "n_pseudo": 375,
+      "median_rms_m": 0.3599084732463005,
+      "p95_rms_m": 0.6107926102310723
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod/7d/mean",
+      "W": 12,
+      "n_pseudo": 375,
+      "median_rms_m": 0.2801964683847404,
+      "p95_rms_m": 0.48739314910921244
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod/7d/mean",
+      "W": 24,
+      "n_pseudo": 375,
+      "median_rms_m": 0.2177556954225734,
+      "p95_rms_m": 0.3953043794997971
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod/7d/mean",
+      "W": 48,
+      "n_pseudo": 375,
+      "median_rms_m": 0.1637846549025533,
+      "p95_rms_m": 0.3056300653858114
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod/7d/mean",
+      "W": 96,
+      "n_pseudo": 375,
+      "median_rms_m": 0.12872849100242714,
+      "p95_rms_m": 0.26708846401884556
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod/7d/mean",
+      "W": 336,
+      "n_pseudo": 375,
+      "median_rms_m": 0.054538749513172474,
+      "p95_rms_m": 0.16929264976864744
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod/7d/median",
+      "W": 1,
+      "n_pseudo": 375,
+      "median_rms_m": 0.7845456867235547,
+      "p95_rms_m": 1.2785168891462877
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod/7d/median",
+      "W": 6,
+      "n_pseudo": 375,
+      "median_rms_m": 0.38085500647329584,
+      "p95_rms_m": 0.6478281386132985
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod/7d/median",
+      "W": 12,
+      "n_pseudo": 375,
+      "median_rms_m": 0.3012695912346754,
+      "p95_rms_m": 0.5245934553184213
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod/7d/median",
+      "W": 24,
+      "n_pseudo": 375,
+      "median_rms_m": 0.23986181137284854,
+      "p95_rms_m": 0.4338494282328776
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod/7d/median",
+      "W": 48,
+      "n_pseudo": 375,
+      "median_rms_m": 0.186332928511118,
+      "p95_rms_m": 0.3513563880459913
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod/7d/median",
+      "W": 96,
+      "n_pseudo": 375,
+      "median_rms_m": 0.1630374341853129,
+      "p95_rms_m": 0.33139480913629843
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod/7d/median",
+      "W": 336,
+      "n_pseudo": 375,
+      "median_rms_m": 0.10310697555541992,
+      "p95_rms_m": 0.2522176697140647
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod/14d/mean",
+      "W": 1,
+      "n_pseudo": 375,
+      "median_rms_m": 0.7400490761325385,
+      "p95_rms_m": 1.200181314866718
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod/14d/mean",
+      "W": 6,
+      "n_pseudo": 375,
+      "median_rms_m": 0.35932031755576277,
+      "p95_rms_m": 0.6128215720984057
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod/14d/mean",
+      "W": 12,
+      "n_pseudo": 375,
+      "median_rms_m": 0.28227769504505007,
+      "p95_rms_m": 0.49551381767550523
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod/14d/mean",
+      "W": 24,
+      "n_pseudo": 375,
+      "median_rms_m": 0.22369738283936128,
+      "p95_rms_m": 0.40625580886323276
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod/14d/mean",
+      "W": 48,
+      "n_pseudo": 375,
+      "median_rms_m": 0.17196462454999556,
+      "p95_rms_m": 0.32363602476180864
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod/14d/mean",
+      "W": 96,
+      "n_pseudo": 375,
+      "median_rms_m": 0.14360779255111028,
+      "p95_rms_m": 0.2889235155274999
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod/14d/mean",
+      "W": 336,
+      "n_pseudo": 375,
+      "median_rms_m": 0.07599307241894013,
+      "p95_rms_m": 0.1957800002325145
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod/14d/median",
+      "W": 1,
+      "n_pseudo": 375,
+      "median_rms_m": 0.7596277903753749,
+      "p95_rms_m": 1.237853151065682
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod/14d/median",
+      "W": 6,
+      "n_pseudo": 375,
+      "median_rms_m": 0.38252595167464704,
+      "p95_rms_m": 0.6515746322096637
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod/14d/median",
+      "W": 12,
+      "n_pseudo": 375,
+      "median_rms_m": 0.30876607955496177,
+      "p95_rms_m": 0.5404956968987711
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod/14d/median",
+      "W": 24,
+      "n_pseudo": 375,
+      "median_rms_m": 0.25319081732400484,
+      "p95_rms_m": 0.45573457133108947
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod/14d/median",
+      "W": 48,
+      "n_pseudo": 375,
+      "median_rms_m": 0.20600364254031395,
+      "p95_rms_m": 0.37904581000985993
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod/14d/median",
+      "W": 96,
+      "n_pseudo": 375,
+      "median_rms_m": 0.1886871068247945,
+      "p95_rms_m": 0.36087667182201605
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod/14d/median",
+      "W": 336,
+      "n_pseudo": 375,
+      "median_rms_m": 0.13408498536972774,
+      "p95_rms_m": 0.28448900268191374
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod/28d/mean",
+      "W": 1,
+      "n_pseudo": 375,
+      "median_rms_m": 0.7363789987063676,
+      "p95_rms_m": 1.1977489136105228
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod/28d/mean",
+      "W": 6,
+      "n_pseudo": 375,
+      "median_rms_m": 0.3631474650604647,
+      "p95_rms_m": 0.618321464662842
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod/28d/mean",
+      "W": 12,
+      "n_pseudo": 375,
+      "median_rms_m": 0.2887184107254599,
+      "p95_rms_m": 0.5036749591073026
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod/28d/mean",
+      "W": 24,
+      "n_pseudo": 375,
+      "median_rms_m": 0.23256150605987225,
+      "p95_rms_m": 0.4199583318948686
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod/28d/mean",
+      "W": 48,
+      "n_pseudo": 375,
+      "median_rms_m": 0.18213491885673858,
+      "p95_rms_m": 0.3392548167022637
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod/28d/mean",
+      "W": 96,
+      "n_pseudo": 375,
+      "median_rms_m": 0.15936210884321483,
+      "p95_rms_m": 0.309921015493017
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod/28d/mean",
+      "W": 336,
+      "n_pseudo": 375,
+      "median_rms_m": 0.0984781885903973,
+      "p95_rms_m": 0.2229514931875563
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod/28d/median",
+      "W": 1,
+      "n_pseudo": 375,
+      "median_rms_m": 0.7561725339071358,
+      "p95_rms_m": 1.2321308479317388
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod/28d/median",
+      "W": 6,
+      "n_pseudo": 375,
+      "median_rms_m": 0.39024331919209887,
+      "p95_rms_m": 0.6648388464357147
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod/28d/median",
+      "W": 12,
+      "n_pseudo": 375,
+      "median_rms_m": 0.32024710830840175,
+      "p95_rms_m": 0.5580593056084254
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod/28d/median",
+      "W": 24,
+      "n_pseudo": 375,
+      "median_rms_m": 0.2677001265743318,
+      "p95_rms_m": 0.47570488997919697
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod/28d/median",
+      "W": 48,
+      "n_pseudo": 375,
+      "median_rms_m": 0.22366347058334113,
+      "p95_rms_m": 0.4028338156808166
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod/28d/median",
+      "W": 96,
+      "n_pseudo": 375,
+      "median_rms_m": 0.2098994178139221,
+      "p95_rms_m": 0.388828086640613
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod/28d/median",
+      "W": 336,
+      "n_pseudo": 375,
+      "median_rms_m": 0.16014387494041807,
+      "p95_rms_m": 0.31429055077689033
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod/all/mean",
+      "W": 1,
+      "n_pseudo": 375,
+      "median_rms_m": 0.7363789987063676,
+      "p95_rms_m": 1.1977489136105228
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod/all/mean",
+      "W": 6,
+      "n_pseudo": 375,
+      "median_rms_m": 0.3631474650604647,
+      "p95_rms_m": 0.618321464662842
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod/all/mean",
+      "W": 12,
+      "n_pseudo": 375,
+      "median_rms_m": 0.2887184107254599,
+      "p95_rms_m": 0.5036749591073026
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod/all/mean",
+      "W": 24,
+      "n_pseudo": 375,
+      "median_rms_m": 0.23256150605987225,
+      "p95_rms_m": 0.4199583318948686
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod/all/mean",
+      "W": 48,
+      "n_pseudo": 375,
+      "median_rms_m": 0.18213491885673858,
+      "p95_rms_m": 0.3392548167022637
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod/all/mean",
+      "W": 96,
+      "n_pseudo": 375,
+      "median_rms_m": 0.15936210884321483,
+      "p95_rms_m": 0.309921015493017
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod/all/mean",
+      "W": 336,
+      "n_pseudo": 375,
+      "median_rms_m": 0.0984781885903973,
+      "p95_rms_m": 0.2229514931875563
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod/all/median",
+      "W": 1,
+      "n_pseudo": 375,
+      "median_rms_m": 0.7561725339071358,
+      "p95_rms_m": 1.2321308479317388
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod/all/median",
+      "W": 6,
+      "n_pseudo": 375,
+      "median_rms_m": 0.39024331919209887,
+      "p95_rms_m": 0.6648388464357147
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod/all/median",
+      "W": 12,
+      "n_pseudo": 375,
+      "median_rms_m": 0.32024710830840175,
+      "p95_rms_m": 0.5580593056084254
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod/all/median",
+      "W": 24,
+      "n_pseudo": 375,
+      "median_rms_m": 0.2677001265743318,
+      "p95_rms_m": 0.47570488997919697
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod/all/median",
+      "W": 48,
+      "n_pseudo": 375,
+      "median_rms_m": 0.22366347058334113,
+      "p95_rms_m": 0.4028338156808166
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod/all/median",
+      "W": 96,
+      "n_pseudo": 375,
+      "median_rms_m": 0.2098994178139221,
+      "p95_rms_m": 0.388828086640613
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod/all/median",
+      "W": 336,
+      "n_pseudo": 375,
+      "median_rms_m": 0.16014387494041807,
+      "p95_rms_m": 0.31429055077689033
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod_weekday/7d/mean",
+      "W": 1,
+      "n_pseudo": 375,
+      "median_rms_m": 0.9481520779455135,
+      "p95_rms_m": 1.534392582125495
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod_weekday/7d/mean",
+      "W": 6,
+      "n_pseudo": 375,
+      "median_rms_m": 0.3869832882949026,
+      "p95_rms_m": 0.6449003853516668
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod_weekday/7d/mean",
+      "W": 12,
+      "n_pseudo": 375,
+      "median_rms_m": 0.27560687573285575,
+      "p95_rms_m": 0.4767535960783772
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod_weekday/7d/mean",
+      "W": 24,
+      "n_pseudo": 375,
+      "median_rms_m": 0.1956124517163336,
+      "p95_rms_m": 0.35324878997706427
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod_weekday/7d/mean",
+      "W": 48,
+      "n_pseudo": 375,
+      "median_rms_m": 0.13902167639995808,
+      "p95_rms_m": 0.26503613694088796
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod_weekday/7d/mean",
+      "W": 96,
+      "n_pseudo": 375,
+      "median_rms_m": 0.09995420824701687,
+      "p95_rms_m": 0.2214327596935595
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod_weekday/7d/mean",
+      "W": 336,
+      "n_pseudo": 375,
+      "median_rms_m": 0.05453874951317197,
+      "p95_rms_m": 0.1692926497686477
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod_weekday/7d/median",
+      "W": 1,
+      "n_pseudo": 375,
+      "median_rms_m": 0.9481520779455135,
+      "p95_rms_m": 1.534392582125495
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod_weekday/7d/median",
+      "W": 6,
+      "n_pseudo": 375,
+      "median_rms_m": 0.3869832882949026,
+      "p95_rms_m": 0.6449003853516668
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod_weekday/7d/median",
+      "W": 12,
+      "n_pseudo": 375,
+      "median_rms_m": 0.27560687573285575,
+      "p95_rms_m": 0.4767535960783772
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod_weekday/7d/median",
+      "W": 24,
+      "n_pseudo": 375,
+      "median_rms_m": 0.1956124517163336,
+      "p95_rms_m": 0.35324878997706427
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod_weekday/7d/median",
+      "W": 48,
+      "n_pseudo": 375,
+      "median_rms_m": 0.13902167639995808,
+      "p95_rms_m": 0.26503613694088796
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod_weekday/7d/median",
+      "W": 96,
+      "n_pseudo": 375,
+      "median_rms_m": 0.09995420824701687,
+      "p95_rms_m": 0.2214327596935595
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod_weekday/7d/median",
+      "W": 336,
+      "n_pseudo": 375,
+      "median_rms_m": 0.05453874951317197,
+      "p95_rms_m": 0.1692926497686477
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod_weekday/14d/mean",
+      "W": 1,
+      "n_pseudo": 375,
+      "median_rms_m": 0.8265290586418825,
+      "p95_rms_m": 1.3373344357913097
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod_weekday/14d/mean",
+      "W": 6,
+      "n_pseudo": 375,
+      "median_rms_m": 0.3433457646252015,
+      "p95_rms_m": 0.5758454458777212
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod_weekday/14d/mean",
+      "W": 12,
+      "n_pseudo": 375,
+      "median_rms_m": 0.24846150419883364,
+      "p95_rms_m": 0.4301490169513395
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod_weekday/14d/mean",
+      "W": 24,
+      "n_pseudo": 375,
+      "median_rms_m": 0.1818232212685087,
+      "p95_rms_m": 0.3288996186435106
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod_weekday/14d/mean",
+      "W": 48,
+      "n_pseudo": 375,
+      "median_rms_m": 0.13495543851921954,
+      "p95_rms_m": 0.2596916458898284
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod_weekday/14d/mean",
+      "W": 96,
+      "n_pseudo": 375,
+      "median_rms_m": 0.10602748941552442,
+      "p95_rms_m": 0.23225834034196796
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod_weekday/14d/mean",
+      "W": 336,
+      "n_pseudo": 375,
+      "median_rms_m": 0.0759930724189395,
+      "p95_rms_m": 0.1957800002325148
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod_weekday/14d/median",
+      "W": 1,
+      "n_pseudo": 375,
+      "median_rms_m": 0.8265290586418825,
+      "p95_rms_m": 1.3373344357913097
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod_weekday/14d/median",
+      "W": 6,
+      "n_pseudo": 375,
+      "median_rms_m": 0.3433457646252015,
+      "p95_rms_m": 0.5758454458777212
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod_weekday/14d/median",
+      "W": 12,
+      "n_pseudo": 375,
+      "median_rms_m": 0.24846150419883364,
+      "p95_rms_m": 0.4301490169513395
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod_weekday/14d/median",
+      "W": 24,
+      "n_pseudo": 375,
+      "median_rms_m": 0.1818232212685087,
+      "p95_rms_m": 0.3288996186435106
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod_weekday/14d/median",
+      "W": 48,
+      "n_pseudo": 375,
+      "median_rms_m": 0.13495543851921954,
+      "p95_rms_m": 0.2596916458898284
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod_weekday/14d/median",
+      "W": 96,
+      "n_pseudo": 375,
+      "median_rms_m": 0.10602748941552442,
+      "p95_rms_m": 0.23225834034196796
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod_weekday/14d/median",
+      "W": 336,
+      "n_pseudo": 375,
+      "median_rms_m": 0.0759930724189395,
+      "p95_rms_m": 0.1957800002325148
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod_weekday/28d/mean",
+      "W": 1,
+      "n_pseudo": 375,
+      "median_rms_m": 0.7833273433869752,
+      "p95_rms_m": 1.2694107999388695
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod_weekday/28d/mean",
+      "W": 6,
+      "n_pseudo": 375,
+      "median_rms_m": 0.3333993980753534,
+      "p95_rms_m": 0.5613129763710792
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod_weekday/28d/mean",
+      "W": 12,
+      "n_pseudo": 375,
+      "median_rms_m": 0.24585450993531416,
+      "p95_rms_m": 0.4278589867626986
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod_weekday/28d/mean",
+      "W": 24,
+      "n_pseudo": 375,
+      "median_rms_m": 0.1852982607593276,
+      "p95_rms_m": 0.33755338731519446
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod_weekday/28d/mean",
+      "W": 48,
+      "n_pseudo": 375,
+      "median_rms_m": 0.14342303835088036,
+      "p95_rms_m": 0.2745199647859302
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod_weekday/28d/mean",
+      "W": 96,
+      "n_pseudo": 375,
+      "median_rms_m": 0.11980090372133714,
+      "p95_rms_m": 0.2521848564712018
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod_weekday/28d/mean",
+      "W": 336,
+      "n_pseudo": 375,
+      "median_rms_m": 0.09847818859039806,
+      "p95_rms_m": 0.2229514931875563
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod_weekday/28d/median",
+      "W": 1,
+      "n_pseudo": 375,
+      "median_rms_m": 0.8203462512371061,
+      "p95_rms_m": 1.3314301161040658
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod_weekday/28d/median",
+      "W": 6,
+      "n_pseudo": 375,
+      "median_rms_m": 0.35740556262147044,
+      "p95_rms_m": 0.6035616249952829
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod_weekday/28d/median",
+      "W": 12,
+      "n_pseudo": 375,
+      "median_rms_m": 0.2686610612260651,
+      "p95_rms_m": 0.47026673033172717
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod_weekday/28d/median",
+      "W": 24,
+      "n_pseudo": 375,
+      "median_rms_m": 0.20862438099423705,
+      "p95_rms_m": 0.3777607129968654
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod_weekday/28d/median",
+      "W": 48,
+      "n_pseudo": 375,
+      "median_rms_m": 0.16754752336642667,
+      "p95_rms_m": 0.31561081026948795
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod_weekday/28d/median",
+      "W": 96,
+      "n_pseudo": 375,
+      "median_rms_m": 0.14632457075725874,
+      "p95_rms_m": 0.29362810781778087
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod_weekday/28d/median",
+      "W": 336,
+      "n_pseudo": 375,
+      "median_rms_m": 0.12684481484549387,
+      "p95_rms_m": 0.26676353954133525
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod_weekday/all/mean",
+      "W": 1,
+      "n_pseudo": 375,
+      "median_rms_m": 0.7833273433869752,
+      "p95_rms_m": 1.2694107999388695
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod_weekday/all/mean",
+      "W": 6,
+      "n_pseudo": 375,
+      "median_rms_m": 0.3333993980753534,
+      "p95_rms_m": 0.5613129763710792
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod_weekday/all/mean",
+      "W": 12,
+      "n_pseudo": 375,
+      "median_rms_m": 0.24585450993531416,
+      "p95_rms_m": 0.4278589867626986
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod_weekday/all/mean",
+      "W": 24,
+      "n_pseudo": 375,
+      "median_rms_m": 0.1852982607593276,
+      "p95_rms_m": 0.33755338731519446
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod_weekday/all/mean",
+      "W": 48,
+      "n_pseudo": 375,
+      "median_rms_m": 0.14342303835088036,
+      "p95_rms_m": 0.2745199647859302
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod_weekday/all/mean",
+      "W": 96,
+      "n_pseudo": 375,
+      "median_rms_m": 0.11980090372133714,
+      "p95_rms_m": 0.2521848564712018
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod_weekday/all/mean",
+      "W": 336,
+      "n_pseudo": 375,
+      "median_rms_m": 0.09847818859039806,
+      "p95_rms_m": 0.2229514931875563
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod_weekday/all/median",
+      "W": 1,
+      "n_pseudo": 375,
+      "median_rms_m": 0.8203462512371061,
+      "p95_rms_m": 1.3314301161040658
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod_weekday/all/median",
+      "W": 6,
+      "n_pseudo": 375,
+      "median_rms_m": 0.35740556262147044,
+      "p95_rms_m": 0.6035616249952829
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod_weekday/all/median",
+      "W": 12,
+      "n_pseudo": 375,
+      "median_rms_m": 0.2686610612260651,
+      "p95_rms_m": 0.47026673033172717
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod_weekday/all/median",
+      "W": 24,
+      "n_pseudo": 375,
+      "median_rms_m": 0.20862438099423705,
+      "p95_rms_m": 0.3777607129968654
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod_weekday/all/median",
+      "W": 48,
+      "n_pseudo": 375,
+      "median_rms_m": 0.16754752336642667,
+      "p95_rms_m": 0.31561081026948795
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod_weekday/all/median",
+      "W": 96,
+      "n_pseudo": 375,
+      "median_rms_m": 0.14632457075725874,
+      "p95_rms_m": 0.29362810781778087
+    },
+    {
+      "stratum": "history 14-28d",
+      "method": "tod_weekday/all/median",
+      "W": 336,
+      "n_pseudo": 375,
+      "median_rms_m": 0.12684481484549387,
+      "p95_rms_m": 0.26676353954133525
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod/7d/mean",
+      "W": 1,
+      "n_pseudo": 370,
+      "median_rms_m": 0.8953751654454063,
+      "p95_rms_m": 1.5446742470230261
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod/7d/mean",
+      "W": 6,
+      "n_pseudo": 370,
+      "median_rms_m": 0.4266700586757808,
+      "p95_rms_m": 0.7557102187793658
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod/7d/mean",
+      "W": 12,
+      "n_pseudo": 370,
+      "median_rms_m": 0.33225150896393946,
+      "p95_rms_m": 0.6001676112476196
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod/7d/mean",
+      "W": 24,
+      "n_pseudo": 370,
+      "median_rms_m": 0.25433214725565184,
+      "p95_rms_m": 0.47197534316920675
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod/7d/mean",
+      "W": 48,
+      "n_pseudo": 370,
+      "median_rms_m": 0.19599432274040338,
+      "p95_rms_m": 0.37762079063564125
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod/7d/mean",
+      "W": 96,
+      "n_pseudo": 370,
+      "median_rms_m": 0.14590406524985455,
+      "p95_rms_m": 0.29327688964292836
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod/7d/mean",
+      "W": 336,
+      "n_pseudo": 370,
+      "median_rms_m": 0.049838633764357286,
+      "p95_rms_m": 0.17614508980796456
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod/7d/median",
+      "W": 1,
+      "n_pseudo": 370,
+      "median_rms_m": 0.9253902071459714,
+      "p95_rms_m": 1.6022885362015322
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod/7d/median",
+      "W": 6,
+      "n_pseudo": 370,
+      "median_rms_m": 0.4420022008844215,
+      "p95_rms_m": 0.7907816484286162
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod/7d/median",
+      "W": 12,
+      "n_pseudo": 370,
+      "median_rms_m": 0.34588986321511495,
+      "p95_rms_m": 0.6242474593037651
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod/7d/median",
+      "W": 24,
+      "n_pseudo": 370,
+      "median_rms_m": 0.2659181380074913,
+      "p95_rms_m": 0.5003179959145472
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod/7d/median",
+      "W": 48,
+      "n_pseudo": 370,
+      "median_rms_m": 0.2072516640144984,
+      "p95_rms_m": 0.4092207963420473
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod/7d/median",
+      "W": 96,
+      "n_pseudo": 370,
+      "median_rms_m": 0.16058973900928464,
+      "p95_rms_m": 0.335588231005428
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod/7d/median",
+      "W": 336,
+      "n_pseudo": 370,
+      "median_rms_m": 0.07030066989717029,
+      "p95_rms_m": 0.24787328583853582
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod/14d/mean",
+      "W": 1,
+      "n_pseudo": 370,
+      "median_rms_m": 0.872305874706466,
+      "p95_rms_m": 1.5166956958882452
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod/14d/mean",
+      "W": 6,
+      "n_pseudo": 370,
+      "median_rms_m": 0.42221661403344274,
+      "p95_rms_m": 0.7469857458787948
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod/14d/mean",
+      "W": 12,
+      "n_pseudo": 370,
+      "median_rms_m": 0.33364598113924415,
+      "p95_rms_m": 0.5947446972724535
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod/14d/mean",
+      "W": 24,
+      "n_pseudo": 370,
+      "median_rms_m": 0.25779358628802906,
+      "p95_rms_m": 0.47375206518396085
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod/14d/mean",
+      "W": 48,
+      "n_pseudo": 370,
+      "median_rms_m": 0.20184916275966103,
+      "p95_rms_m": 0.3853585493362717
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod/14d/mean",
+      "W": 96,
+      "n_pseudo": 370,
+      "median_rms_m": 0.15314286056009996,
+      "p95_rms_m": 0.30499484257396864
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod/14d/mean",
+      "W": 336,
+      "n_pseudo": 370,
+      "median_rms_m": 0.0619424411228723,
+      "p95_rms_m": 0.20675873728025507
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod/14d/median",
+      "W": 1,
+      "n_pseudo": 370,
+      "median_rms_m": 0.8882659068009577,
+      "p95_rms_m": 1.5522730646013023
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod/14d/median",
+      "W": 6,
+      "n_pseudo": 370,
+      "median_rms_m": 0.4339452009489725,
+      "p95_rms_m": 0.7699324170070715
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod/14d/median",
+      "W": 12,
+      "n_pseudo": 370,
+      "median_rms_m": 0.34398555472800896,
+      "p95_rms_m": 0.6221063940810627
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod/14d/median",
+      "W": 24,
+      "n_pseudo": 370,
+      "median_rms_m": 0.26859965656185736,
+      "p95_rms_m": 0.5060951745209297
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod/14d/median",
+      "W": 48,
+      "n_pseudo": 370,
+      "median_rms_m": 0.21270935228776838,
+      "p95_rms_m": 0.4244480546552968
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod/14d/median",
+      "W": 96,
+      "n_pseudo": 370,
+      "median_rms_m": 0.16706948141390177,
+      "p95_rms_m": 0.3516916643207917
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod/14d/median",
+      "W": 336,
+      "n_pseudo": 370,
+      "median_rms_m": 0.08193048976716541,
+      "p95_rms_m": 0.27727602549961633
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod/28d/mean",
+      "W": 1,
+      "n_pseudo": 370,
+      "median_rms_m": 0.8649844946062615,
+      "p95_rms_m": 1.502088312172152
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod/28d/mean",
+      "W": 6,
+      "n_pseudo": 370,
+      "median_rms_m": 0.4309260176001671,
+      "p95_rms_m": 0.7550714627587275
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod/28d/mean",
+      "W": 12,
+      "n_pseudo": 370,
+      "median_rms_m": 0.3451818608737473,
+      "p95_rms_m": 0.6175458599690483
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod/28d/mean",
+      "W": 24,
+      "n_pseudo": 370,
+      "median_rms_m": 0.2748249949130852,
+      "p95_rms_m": 0.5041775700483806
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod/28d/mean",
+      "W": 48,
+      "n_pseudo": 370,
+      "median_rms_m": 0.22101238195807404,
+      "p95_rms_m": 0.42509829911839486
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod/28d/mean",
+      "W": 96,
+      "n_pseudo": 370,
+      "median_rms_m": 0.17355305389085968,
+      "p95_rms_m": 0.36004676489320864
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod/28d/mean",
+      "W": 336,
+      "n_pseudo": 370,
+      "median_rms_m": 0.09563425041380397,
+      "p95_rms_m": 0.28326860793999237
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod/28d/median",
+      "W": 1,
+      "n_pseudo": 370,
+      "median_rms_m": 0.8754584931308067,
+      "p95_rms_m": 1.5274177804193978
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod/28d/median",
+      "W": 6,
+      "n_pseudo": 370,
+      "median_rms_m": 0.43986526844197915,
+      "p95_rms_m": 0.7892077688227838
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod/28d/median",
+      "W": 12,
+      "n_pseudo": 370,
+      "median_rms_m": 0.35516239349381096,
+      "p95_rms_m": 0.6522258141894168
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod/28d/median",
+      "W": 24,
+      "n_pseudo": 370,
+      "median_rms_m": 0.2836891226771468,
+      "p95_rms_m": 0.5446547604865224
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod/28d/median",
+      "W": 48,
+      "n_pseudo": 370,
+      "median_rms_m": 0.22977250053604079,
+      "p95_rms_m": 0.46910362388170573
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod/28d/median",
+      "W": 96,
+      "n_pseudo": 370,
+      "median_rms_m": 0.18705932217926996,
+      "p95_rms_m": 0.40869724457489975
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod/28d/median",
+      "W": 336,
+      "n_pseudo": 370,
+      "median_rms_m": 0.11118544283367339,
+      "p95_rms_m": 0.3504330379622323
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod/all/mean",
+      "W": 1,
+      "n_pseudo": 370,
+      "median_rms_m": 0.8883995774559728,
+      "p95_rms_m": 1.5754406207960876
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod/all/mean",
+      "W": 6,
+      "n_pseudo": 370,
+      "median_rms_m": 0.49365215921261285,
+      "p95_rms_m": 0.9403220727598501
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod/all/mean",
+      "W": 12,
+      "n_pseudo": 370,
+      "median_rms_m": 0.41759221949856873,
+      "p95_rms_m": 0.8361111037073518
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod/all/mean",
+      "W": 24,
+      "n_pseudo": 370,
+      "median_rms_m": 0.3513341826761285,
+      "p95_rms_m": 0.7514770777594423
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod/all/mean",
+      "W": 48,
+      "n_pseudo": 370,
+      "median_rms_m": 0.3034932712481707,
+      "p95_rms_m": 0.6908039615989988
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod/all/mean",
+      "W": 96,
+      "n_pseudo": 370,
+      "median_rms_m": 0.2712849062113387,
+      "p95_rms_m": 0.6534945496066615
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod/all/mean",
+      "W": 336,
+      "n_pseudo": 370,
+      "median_rms_m": 0.2361195346994336,
+      "p95_rms_m": 0.613339509951597
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod/all/median",
+      "W": 1,
+      "n_pseudo": 370,
+      "median_rms_m": 0.900219826662449,
+      "p95_rms_m": 1.616445573263404
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod/all/median",
+      "W": 6,
+      "n_pseudo": 370,
+      "median_rms_m": 0.5077233520344362,
+      "p95_rms_m": 1.014943517954647
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod/all/median",
+      "W": 12,
+      "n_pseudo": 370,
+      "median_rms_m": 0.4365189239731603,
+      "p95_rms_m": 0.9149770014793561
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod/all/median",
+      "W": 24,
+      "n_pseudo": 370,
+      "median_rms_m": 0.37633568987900795,
+      "p95_rms_m": 0.825194015123486
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod/all/median",
+      "W": 48,
+      "n_pseudo": 370,
+      "median_rms_m": 0.3350986078583672,
+      "p95_rms_m": 0.7685483222065301
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod/all/median",
+      "W": 96,
+      "n_pseudo": 370,
+      "median_rms_m": 0.30857362335404737,
+      "p95_rms_m": 0.7369023214335874
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod/all/median",
+      "W": 336,
+      "n_pseudo": 370,
+      "median_rms_m": 0.28270732788812547,
+      "p95_rms_m": 0.6972974754515145
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod_weekday/7d/mean",
+      "W": 1,
+      "n_pseudo": 370,
+      "median_rms_m": 1.1321958152097724,
+      "p95_rms_m": 1.9330723729976642
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod_weekday/7d/mean",
+      "W": 6,
+      "n_pseudo": 370,
+      "median_rms_m": 0.45732743166208334,
+      "p95_rms_m": 0.7953416973698778
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod_weekday/7d/mean",
+      "W": 12,
+      "n_pseudo": 370,
+      "median_rms_m": 0.3243308404357632,
+      "p95_rms_m": 0.5750445612579868
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod_weekday/7d/mean",
+      "W": 24,
+      "n_pseudo": 370,
+      "median_rms_m": 0.22730846120309575,
+      "p95_rms_m": 0.4173379118509568
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod_weekday/7d/mean",
+      "W": 48,
+      "n_pseudo": 370,
+      "median_rms_m": 0.16040475901343323,
+      "p95_rms_m": 0.3169529788699579
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod_weekday/7d/mean",
+      "W": 96,
+      "n_pseudo": 370,
+      "median_rms_m": 0.11248432326292529,
+      "p95_rms_m": 0.25199038430840276
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod_weekday/7d/mean",
+      "W": 336,
+      "n_pseudo": 370,
+      "median_rms_m": 0.04983863376435779,
+      "p95_rms_m": 0.1761450898079644
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod_weekday/7d/median",
+      "W": 1,
+      "n_pseudo": 370,
+      "median_rms_m": 1.1321958152097724,
+      "p95_rms_m": 1.9330723729976642
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod_weekday/7d/median",
+      "W": 6,
+      "n_pseudo": 370,
+      "median_rms_m": 0.45732743166208334,
+      "p95_rms_m": 0.7953416973698778
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod_weekday/7d/median",
+      "W": 12,
+      "n_pseudo": 370,
+      "median_rms_m": 0.3243308404357632,
+      "p95_rms_m": 0.5750445612579868
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod_weekday/7d/median",
+      "W": 24,
+      "n_pseudo": 370,
+      "median_rms_m": 0.22730846120309575,
+      "p95_rms_m": 0.4173379118509568
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod_weekday/7d/median",
+      "W": 48,
+      "n_pseudo": 370,
+      "median_rms_m": 0.16040475901343323,
+      "p95_rms_m": 0.3169529788699579
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod_weekday/7d/median",
+      "W": 96,
+      "n_pseudo": 370,
+      "median_rms_m": 0.11248432326292529,
+      "p95_rms_m": 0.25199038430840276
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod_weekday/7d/median",
+      "W": 336,
+      "n_pseudo": 370,
+      "median_rms_m": 0.04983863376435779,
+      "p95_rms_m": 0.1761450898079644
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod_weekday/14d/mean",
+      "W": 1,
+      "n_pseudo": 370,
+      "median_rms_m": 0.9836850667832082,
+      "p95_rms_m": 1.6990920451671079
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod_weekday/14d/mean",
+      "W": 6,
+      "n_pseudo": 370,
+      "median_rms_m": 0.4033790925505305,
+      "p95_rms_m": 0.6963757051999484
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod_weekday/14d/mean",
+      "W": 12,
+      "n_pseudo": 370,
+      "median_rms_m": 0.28700656432740174,
+      "p95_rms_m": 0.5093860256959493
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod_weekday/14d/mean",
+      "W": 24,
+      "n_pseudo": 370,
+      "median_rms_m": 0.20515767028074328,
+      "p95_rms_m": 0.37520177394786086
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod_weekday/14d/mean",
+      "W": 48,
+      "n_pseudo": 370,
+      "median_rms_m": 0.14928627644924108,
+      "p95_rms_m": 0.29631857494018715
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod_weekday/14d/mean",
+      "W": 96,
+      "n_pseudo": 370,
+      "median_rms_m": 0.11069179152649825,
+      "p95_rms_m": 0.25103994443276473
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod_weekday/14d/mean",
+      "W": 336,
+      "n_pseudo": 370,
+      "median_rms_m": 0.06194244112287249,
+      "p95_rms_m": 0.20675873728025526
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod_weekday/14d/median",
+      "W": 1,
+      "n_pseudo": 370,
+      "median_rms_m": 0.9836850667832082,
+      "p95_rms_m": 1.6990920451671079
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod_weekday/14d/median",
+      "W": 6,
+      "n_pseudo": 370,
+      "median_rms_m": 0.4033790925505305,
+      "p95_rms_m": 0.6963757051999484
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod_weekday/14d/median",
+      "W": 12,
+      "n_pseudo": 370,
+      "median_rms_m": 0.28700656432740174,
+      "p95_rms_m": 0.5093860256959493
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod_weekday/14d/median",
+      "W": 24,
+      "n_pseudo": 370,
+      "median_rms_m": 0.20515767028074328,
+      "p95_rms_m": 0.37520177394786086
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod_weekday/14d/median",
+      "W": 48,
+      "n_pseudo": 370,
+      "median_rms_m": 0.14928627644924108,
+      "p95_rms_m": 0.29631857494018715
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod_weekday/14d/median",
+      "W": 96,
+      "n_pseudo": 370,
+      "median_rms_m": 0.11069179152649825,
+      "p95_rms_m": 0.25103994443276473
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod_weekday/14d/median",
+      "W": 336,
+      "n_pseudo": 370,
+      "median_rms_m": 0.06194244112287249,
+      "p95_rms_m": 0.20675873728025526
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod_weekday/28d/mean",
+      "W": 1,
+      "n_pseudo": 370,
+      "median_rms_m": 0.90327546170109,
+      "p95_rms_m": 1.5584347606382125
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod_weekday/28d/mean",
+      "W": 6,
+      "n_pseudo": 370,
+      "median_rms_m": 0.38424164926801263,
+      "p95_rms_m": 0.6697000350792681
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod_weekday/28d/mean",
+      "W": 12,
+      "n_pseudo": 370,
+      "median_rms_m": 0.28211117348313697,
+      "p95_rms_m": 0.5110502231663767
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod_weekday/28d/mean",
+      "W": 24,
+      "n_pseudo": 370,
+      "median_rms_m": 0.2109673273492566,
+      "p95_rms_m": 0.401851746219109
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod_weekday/28d/mean",
+      "W": 48,
+      "n_pseudo": 370,
+      "median_rms_m": 0.16124379458068147,
+      "p95_rms_m": 0.34548925633810057
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod_weekday/28d/mean",
+      "W": 96,
+      "n_pseudo": 370,
+      "median_rms_m": 0.12763061242506424,
+      "p95_rms_m": 0.3143206596058436
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod_weekday/28d/mean",
+      "W": 336,
+      "n_pseudo": 370,
+      "median_rms_m": 0.09563425041380383,
+      "p95_rms_m": 0.28326860793999264
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod_weekday/28d/median",
+      "W": 1,
+      "n_pseudo": 370,
+      "median_rms_m": 0.9232914777812993,
+      "p95_rms_m": 1.6000745002439534
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod_weekday/28d/median",
+      "W": 6,
+      "n_pseudo": 370,
+      "median_rms_m": 0.3947705560731821,
+      "p95_rms_m": 0.6901294764962218
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod_weekday/28d/median",
+      "W": 12,
+      "n_pseudo": 370,
+      "median_rms_m": 0.2893138921614941,
+      "p95_rms_m": 0.5266931092663185
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod_weekday/28d/median",
+      "W": 24,
+      "n_pseudo": 370,
+      "median_rms_m": 0.21703043215347512,
+      "p95_rms_m": 0.4204109011376063
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod_weekday/28d/median",
+      "W": 48,
+      "n_pseudo": 370,
+      "median_rms_m": 0.16673185447364033,
+      "p95_rms_m": 0.3646301922060919
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod_weekday/28d/median",
+      "W": 96,
+      "n_pseudo": 370,
+      "median_rms_m": 0.1328974611909815,
+      "p95_rms_m": 0.33323487917151406
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod_weekday/28d/median",
+      "W": 336,
+      "n_pseudo": 370,
+      "median_rms_m": 0.10067695379257202,
+      "p95_rms_m": 0.30389377588317507
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod_weekday/all/mean",
+      "W": 1,
+      "n_pseudo": 370,
+      "median_rms_m": 0.8727990908588259,
+      "p95_rms_m": 1.5351773240845048
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod_weekday/all/mean",
+      "W": 6,
+      "n_pseudo": 370,
+      "median_rms_m": 0.4308527958407277,
+      "p95_rms_m": 0.8519741362843848
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod_weekday/all/mean",
+      "W": 12,
+      "n_pseudo": 370,
+      "median_rms_m": 0.34925263612022833,
+      "p95_rms_m": 0.7570954242191261
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod_weekday/all/mean",
+      "W": 24,
+      "n_pseudo": 370,
+      "median_rms_m": 0.2949638460273848,
+      "p95_rms_m": 0.6803821714527646
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod_weekday/all/mean",
+      "W": 48,
+      "n_pseudo": 370,
+      "median_rms_m": 0.26257956024603557,
+      "p95_rms_m": 0.6375626253368356
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod_weekday/all/mean",
+      "W": 96,
+      "n_pseudo": 370,
+      "median_rms_m": 0.24732088391266643,
+      "p95_rms_m": 0.6254446732779138
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod_weekday/all/mean",
+      "W": 336,
+      "n_pseudo": 370,
+      "median_rms_m": 0.23725739541778193,
+      "p95_rms_m": 0.6138787019564105
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod_weekday/all/median",
+      "W": 1,
+      "n_pseudo": 370,
+      "median_rms_m": 0.8878341912892627,
+      "p95_rms_m": 1.5786077492749044
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod_weekday/all/median",
+      "W": 6,
+      "n_pseudo": 370,
+      "median_rms_m": 0.4486084939454098,
+      "p95_rms_m": 0.9111958302213097
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod_weekday/all/median",
+      "W": 12,
+      "n_pseudo": 370,
+      "median_rms_m": 0.37165327291135075,
+      "p95_rms_m": 0.8161066760613317
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod_weekday/all/median",
+      "W": 24,
+      "n_pseudo": 370,
+      "median_rms_m": 0.3209112936373785,
+      "p95_rms_m": 0.7438358241216942
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod_weekday/all/median",
+      "W": 48,
+      "n_pseudo": 370,
+      "median_rms_m": 0.2917777689540392,
+      "p95_rms_m": 0.7022597013829937
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod_weekday/all/median",
+      "W": 96,
+      "n_pseudo": 370,
+      "median_rms_m": 0.2788660164954363,
+      "p95_rms_m": 0.686552690639104
+    },
+    {
+      "stratum": ">28d",
+      "method": "tod_weekday/all/median",
+      "W": 336,
+      "n_pseudo": 370,
+      "median_rms_m": 0.27085873626527335,
+      "p95_rms_m": 0.6773056842031928
+    }
+  ],
+  "lag": [
+    {
+      "method": "tod/14d/mean",
+      "lag_days": "0-7",
+      "lag_lo": 0,
+      "lag_hi": 7,
+      "n": 371,
+      "median_abs_bias_m": 0.09871454727955412,
+      "median_rms_m": 0.1865025321553777
+    },
+    {
+      "method": "tod/14d/mean",
+      "lag_days": "7-14",
+      "lag_lo": 7,
+      "lag_hi": 14,
+      "n": 369,
+      "median_abs_bias_m": 0.156415314901444,
+      "median_rms_m": 0.22804138064357707
+    },
+    {
+      "method": "tod/14d/mean",
+      "lag_days": "14-30",
+      "lag_lo": 14,
+      "lag_hi": 30,
+      "n": 357,
+      "median_abs_bias_m": 0.26132853683971147,
+      "median_rms_m": 0.31478415668266796
+    },
+    {
+      "method": "tod/14d/mean",
+      "lag_days": "30-60",
+      "lag_lo": 30,
+      "lag_hi": 60,
+      "n": 332,
+      "median_abs_bias_m": 0.3747850696245839,
+      "median_rms_m": 0.41860750899993693
+    },
+    {
+      "method": "tod/14d/mean",
+      "lag_days": "60-90",
+      "lag_lo": 60,
+      "lag_hi": 90,
+      "n": 288,
+      "median_abs_bias_m": 0.3130459736894653,
+      "median_rms_m": 0.3662971652412435
+    },
+    {
+      "method": "tod/14d/mean",
+      "lag_days": "90-180",
+      "lag_lo": 90,
+      "lag_hi": 180,
+      "n": 235,
+      "median_abs_bias_m": 0.4047333524340655,
+      "median_rms_m": 0.4814796159507176
+    },
+    {
+      "method": "tod/14d/mean",
+      "lag_days": "180-300",
+      "lag_lo": 180,
+      "lag_hi": 300,
+      "n": 121,
+      "median_abs_bias_m": 0.45883389003696123,
+      "median_rms_m": 0.5581241196147485
+    },
+    {
+      "method": "tod/28d/mean",
+      "lag_days": "0-7",
+      "lag_lo": 0,
+      "lag_hi": 7,
+      "n": 371,
+      "median_abs_bias_m": 0.14968565728638203,
+      "median_rms_m": 0.21748069038503662
+    },
+    {
+      "method": "tod/28d/mean",
+      "lag_days": "7-14",
+      "lag_lo": 7,
+      "lag_hi": 14,
+      "n": 369,
+      "median_abs_bias_m": 0.2078582956677384,
+      "median_rms_m": 0.2644174684622043
+    },
+    {
+      "method": "tod/28d/mean",
+      "lag_days": "14-30",
+      "lag_lo": 14,
+      "lag_hi": 30,
+      "n": 357,
+      "median_abs_bias_m": 0.31212637183211944,
+      "median_rms_m": 0.3576040677987209
+    },
+    {
+      "method": "tod/28d/mean",
+      "lag_days": "30-60",
+      "lag_lo": 30,
+      "lag_hi": 60,
+      "n": 332,
+      "median_abs_bias_m": 0.4242503765083473,
+      "median_rms_m": 0.4642829305487479
+    },
+    {
+      "method": "tod/28d/mean",
+      "lag_days": "60-90",
+      "lag_lo": 60,
+      "lag_hi": 90,
+      "n": 288,
+      "median_abs_bias_m": 0.3645997792955379,
+      "median_rms_m": 0.4097774387556212
+    },
+    {
+      "method": "tod/28d/mean",
+      "lag_days": "90-180",
+      "lag_lo": 90,
+      "lag_hi": 180,
+      "n": 235,
+      "median_abs_bias_m": 0.453079102152874,
+      "median_rms_m": 0.5230270388164416
+    },
+    {
+      "method": "tod/28d/mean",
+      "lag_days": "180-300",
+      "lag_lo": 180,
+      "lag_hi": 300,
+      "n": 121,
+      "median_abs_bias_m": 0.5063968297831455,
+      "median_rms_m": 0.588878733381801
+    },
+    {
+      "method": "tod_weekday/14d/mean",
+      "lag_days": "0-7",
+      "lag_lo": 0,
+      "lag_hi": 7,
+      "n": 371,
+      "median_abs_bias_m": 0.09499169618655473,
+      "median_rms_m": 0.15009561294977036
+    },
+    {
+      "method": "tod_weekday/14d/mean",
+      "lag_days": "7-14",
+      "lag_lo": 7,
+      "lag_hi": 14,
+      "n": 369,
+      "median_abs_bias_m": 0.1569543509256272,
+      "median_rms_m": 0.19827632334583964
+    },
+    {
+      "method": "tod_weekday/14d/mean",
+      "lag_days": "14-30",
+      "lag_lo": 14,
+      "lag_hi": 30,
+      "n": 357,
+      "median_abs_bias_m": 0.26368644336859387,
+      "median_rms_m": 0.29630390559079445
+    },
+    {
+      "method": "tod_weekday/14d/mean",
+      "lag_days": "30-60",
+      "lag_lo": 30,
+      "lag_hi": 60,
+      "n": 332,
+      "median_abs_bias_m": 0.3717011710007986,
+      "median_rms_m": 0.3968240094263126
+    },
+    {
+      "method": "tod_weekday/14d/mean",
+      "lag_days": "60-90",
+      "lag_lo": 60,
+      "lag_hi": 90,
+      "n": 288,
+      "median_abs_bias_m": 0.3077184193664127,
+      "median_rms_m": 0.3385289136709039
+    },
+    {
+      "method": "tod_weekday/14d/mean",
+      "lag_days": "90-180",
+      "lag_lo": 90,
+      "lag_hi": 180,
+      "n": 235,
+      "median_abs_bias_m": 0.407288459361974,
+      "median_rms_m": 0.4618601310828171
+    },
+    {
+      "method": "tod_weekday/14d/mean",
+      "lag_days": "180-300",
+      "lag_lo": 180,
+      "lag_hi": 300,
+      "n": 121,
+      "median_abs_bias_m": 0.46070177229041737,
+      "median_rms_m": 0.544894439089967
+    },
+    {
+      "method": "tod_weekday/28d/mean",
+      "lag_days": "0-7",
+      "lag_lo": 0,
+      "lag_hi": 7,
+      "n": 371,
+      "median_abs_bias_m": 0.14645252166650236,
+      "median_rms_m": 0.17972352014819049
+    },
+    {
+      "method": "tod_weekday/28d/mean",
+      "lag_days": "7-14",
+      "lag_lo": 7,
+      "lag_hi": 14,
+      "n": 369,
+      "median_abs_bias_m": 0.2078338237035842,
+      "median_rms_m": 0.2363693792882885
+    },
+    {
+      "method": "tod_weekday/28d/mean",
+      "lag_days": "14-30",
+      "lag_lo": 14,
+      "lag_hi": 30,
+      "n": 357,
+      "median_abs_bias_m": 0.3140164005259673,
+      "median_rms_m": 0.3387816188088867
+    },
+    {
+      "method": "tod_weekday/28d/mean",
+      "lag_days": "30-60",
+      "lag_lo": 30,
+      "lag_hi": 60,
+      "n": 332,
+      "median_abs_bias_m": 0.4216604729493459,
+      "median_rms_m": 0.44133919009503547
+    },
+    {
+      "method": "tod_weekday/28d/mean",
+      "lag_days": "60-90",
+      "lag_lo": 60,
+      "lag_hi": 90,
+      "n": 288,
+      "median_abs_bias_m": 0.35973318550321787,
+      "median_rms_m": 0.383171478992921
+    },
+    {
+      "method": "tod_weekday/28d/mean",
+      "lag_days": "90-180",
+      "lag_lo": 90,
+      "lag_hi": 180,
+      "n": 235,
+      "median_abs_bias_m": 0.456111999352773,
+      "median_rms_m": 0.5046042244092942
+    },
+    {
+      "method": "tod_weekday/28d/mean",
+      "lag_days": "180-300",
+      "lag_lo": 180,
+      "lag_hi": 300,
+      "n": 121,
+      "median_abs_bias_m": 0.5090935750515603,
+      "median_rms_m": 0.5772058995550569
+    }
+  ],
+  "signal": [
+    {
+      "leak_type": "big",
+      "n": 201,
+      "median_m": 44.84873580932617,
+      "p10_m": 8.268861770629883,
+      "share_above_3x_noise": 1.0
+    },
+    {
+      "leak_type": "small",
+      "n": 218,
+      "median_m": 0.8984746038913727,
+      "p10_m": 0.20185135006904606,
+      "share_above_3x_noise": 0.7201834862385321
+    }
+  ]
+}

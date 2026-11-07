@@ -75,8 +75,19 @@ def test_cli_make_splits(tmp_path, capsys):
     cases_path = tmp_path / "cases.parquet"
     fake_cases().to_parquet(cases_path)
     out = tmp_path / "splits.json"
-    rc = main(["make-splits", "--cases", str(cases_path), "--out", str(out),
-               "--index-report", str(tmp_path / "none.json"), "--trials", "2"])  # fmt: skip
+    rc = main(
+        [
+            "make-splits",
+            "--cases",
+            str(cases_path),
+            "--out",
+            str(out),
+            "--index-report",
+            str(tmp_path / "none.json"),
+            "--trials",
+            "2",
+        ]
+    )
     assert rc == 0
     s = json.loads(out.read_text())
     assert s["provenance"]["cases_sha256"] and s["provenance"]["git"]

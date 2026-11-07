@@ -139,9 +139,19 @@ def test_cli_build_index(synthetic, tmp_path, monkeypatch, capsys):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("LEAKSENSE_ARTIFACTS_DIR", str(tmp_path / "art"))
     rc = main(
-        ["build-index", "--data-dir", str(data_dir), "--quiet", "--contract", "contract.json",
-         "--report", str(tmp_path / "idx.json"), "--validation", "missing.json"]
-    )  # fmt: skip
+        [
+            "build-index",
+            "--data-dir",
+            str(data_dir),
+            "--quiet",
+            "--contract",
+            "contract.json",
+            "--report",
+            str(tmp_path / "idx.json"),
+            "--validation",
+            "missing.json",
+        ]
+    )
     out = capsys.readouterr().out
     # With the real thresholds (14-day baseline), the 2-day synthetic data has no usable case.
     assert rc == 0 and "excluded (no baseline): 1" in out
@@ -160,5 +170,7 @@ def test_real_index():
     assert set(res.cases["pipe"]) == {str(p) for p in range(2, 35)}
     assert len(res.no_solo) == 10
     assert sorted(res.cases.loc[res.cases["piece"].str.endswith("ll"), "scenario_id"]) == [
-        46, 269, 441
-    ]  # fmt: skip
+        46,
+        269,
+        441,
+    ]

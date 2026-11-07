@@ -58,19 +58,19 @@ DEFAULT_SPECS: dict[int, ScenarioSpec] = {
 }
 
 
-def contract_for(specs: dict[int, ScenarioSpec]) -> DataContract:
+def contract_for(specs: dict[int, ScenarioSpec], n_rows: int = N_ROWS) -> DataContract:
     counts: dict[int, int] = {}
     for spec in specs.values():
         counts[len(spec.leaks)] = counts.get(len(spec.leaks), 0) + 1
-    ts = timestamps()
+    ts = timestamps(n_rows)
     return DataContract(
         n_scenarios=len(specs),
         label_counts=tuple(sorted(counts.items())),
-        n_rows=N_ROWS,
+        n_rows=n_rows,
         first_timestamp=ts[0],
         last_timestamp=ts[-1],
         step_minutes=30,
-        duration_text="48 hours",
+        duration_text=f"{n_rows // 2} hours",
         time_step_text="30.0 min",
         reservoir=RESERVOIR,
         junctions=JUNCTIONS,
@@ -81,8 +81,8 @@ def contract_for(specs: dict[int, ScenarioSpec]) -> DataContract:
     )
 
 
-def timestamps() -> list[str]:
-    idx = pd.date_range(FIRST, periods=N_ROWS, freq="30min")
+def timestamps(n_rows: int = N_ROWS) -> list[str]:
+    idx = pd.date_range(FIRST, periods=n_rows, freq="30min")
     return list(idx.strftime("%Y-%m-%d %H:%M:%S"))
 
 
@@ -141,11 +141,21 @@ def _wide_csv(path: Path, ts: list[str], columns: list[str], values: np.ndarray)
     path.write_text("\n".join(lines) + "\n")
 
 
-def make_dataset(root: Path, specs: dict[int, ScenarioSpec] | None = None, seed: int = 0) -> Path:
-    """Write a synthetic HanoiOK folder under ``root`` and return its path."""
+def make_dataset(
+    root: Path,
+    specs: dict[int, ScenarioSpec] | None = None,
+    seed: int = 0,
+    n_rows: int = N_ROWS,
+    daily_amp: float = 0.0,
+) -> Path:
+    """Write a synthetic HanoiOK folder under ``root`` and return its path.
+
+    ``n_rows`` sets the length (30-min steps); ``daily_amp`` adds a daily pressure cycle (m)
+    so baseline slot matching has something to remove.
+    """
     specs = DEFAULT_SPECS if specs is None else specs
     rng = np.random.default_rng(seed)
-    ts = timestamps()
+    ts = timestamps(n_rows)
     data = root / "HanoiOK"
     data.mkdir(parents=True)
 
@@ -186,7 +196,7 @@ def make_dataset(root: Path, specs: dict[int, ScenarioSpec] | None = None, seed:
             d / f"Scenario-{sid}_info.csv",
             [
                 ("Network_Name", "Hanoi"),
-                ("Duration", "48 hours"),
+                ("Duration", f"{n_rows // 2} hours"),
                 ("Time_Step", "30.0 min"),
                 ("Uncertainty_Topology_(%)", "NO"),
                 ("Uncertainty_Length_(%)", "10.0"),
@@ -196,19 +206,21 @@ def make_dataset(root: Path, specs: dict[int, ScenarioSpec] | None = None, seed:
         )
 
         node_cols = list(JUNCTIONS) + leak_ids + [RESERVOIR]
-        active = np.zeros((N_ROWS, len(spec.leaks)), dtype=bool)
-        flows = np.zeros((N_ROWS, len(spec.leaks)))
+        active = np.zeros((n_rows, len(spec.leaks)), dtype=bool)
+        flows = np.zeros((n_rows, len(spec.leaks)))
         for k, leak in enumerate(spec.leaks):
             active[leak.start_row : leak.end_row + 1, k] = True
             level = 650.0 if leak.kind == "big" else 110.0
-            flows[:, k] = np.where(active[:, k], level + rng.normal(0, 5, N_ROWS), 0.0)
+            flows[:, k] = np.where(active[:, k], level + rng.normal(0, 5, n_rows), 0.0)
 
-        pressure = 60 + rng.normal(0, 0.3, (N_ROWS, len(node_cols)))
+        pressure = 60 + rng.normal(0, 0.3, (n_rows, len(node_cols)))
+        tod = np.arange(n_rows) % 48
+        pressure += daily_amp * np.sin(2 * np.pi * tod / 48)[:, None]
         pressure -= flows.sum(axis=1, keepdims=True) / 100.0
         pressure[:, -1] = 0.0  # reservoir
         _wide_csv(d / "Node_pressures.csv", ts, node_cols, pressure)
 
-        demand = np.abs(rng.normal(40, 10, (N_ROWS, len(node_cols))))
+        demand = np.abs(rng.normal(40, 10, (n_rows, len(node_cols))))
         for k in range(len(spec.leaks)):
             demand[:, len(JUNCTIONS) + k] = flows[:, k]
         demand[:, -1] = -demand[:, :-1].sum(axis=1)
@@ -216,7 +228,7 @@ def make_dataset(root: Path, specs: dict[int, ScenarioSpec] | None = None, seed:
 
         link_cols = list(NOMINAL_PIPES) + extra_links
         _wide_csv(
-            d / "Link_flows.csv", ts, link_cols, rng.normal(100, 30, (N_ROWS, len(link_cols)))
+            d / "Link_flows.csv", ts, link_cols, rng.normal(100, 30, (n_rows, len(link_cols)))
         )
 
         label = active.any(axis=1).astype(float)

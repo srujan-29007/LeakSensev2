@@ -24,15 +24,32 @@ def git_commit(cwd: str | Path | None = None) -> dict:
         return {"commit": None, "dirty": None}
 
 
-def provenance(data_dir: str | Path, config: dict | None = None, seed: int | None = None) -> dict:
-    from leaksense.data.validate import manifest
+def provenance(
+    data_dir: str | Path | None,
+    config: dict | None = None,
+    seed: int | None = None,
+    manifest_sha256: str | None = None,
+) -> dict:
+    """Pass ``data_dir`` to hash the dataset, or ``manifest_sha256`` when no data is read."""
+    if manifest_sha256 is None and data_dir is not None:
+        from leaksense.data.validate import manifest
 
-    m = manifest(Path(data_dir))
+        manifest_sha256 = manifest(Path(data_dir))["sha256"]
     return {
         "leaksense_version": __version__,
         "generated_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "git": git_commit(),
-        "data_manifest_sha256": m["sha256"],
+        "data_manifest_sha256": manifest_sha256,
         "config": config or {},
         "seed": seed,
     }
+
+
+def file_sha256(path: str | Path) -> str:
+    import hashlib
+
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        while chunk := f.read(1 << 20):
+            h.update(chunk)
+    return h.hexdigest()

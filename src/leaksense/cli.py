@@ -48,6 +48,14 @@ def build_parser() -> argparse.ArgumentParser:
     b.add_argument("--contract", help="JSON file overriding the default data contract")
     b.add_argument("--quiet", action="store_true", help="no progress output")
     b.set_defaults(func=cmd_build_index)
+
+    m = sub.add_parser("make-splits", help="locked test fold + grouped 5-fold CV (splits/)")
+    m.add_argument("--cases", help="case index (default: $LEAKSENSE_ARTIFACTS_DIR/cases.parquet)")
+    m.add_argument("--out", default="splits/splits_v1.json", help="splits JSON path")
+    m.add_argument("--index-report", default="reports/case_index.json",
+                   help="M3 report, for the data-manifest hash")  # fmt: skip
+    m.add_argument("--trials", type=int, default=50, help="candidate seeds for type/kind balance")
+    m.set_defaults(func=cmd_make_splits)
     return parser
 
 
@@ -185,6 +193,43 @@ def cmd_build_index(args: argparse.Namespace) -> int:
     rpath.write_text(json.dumps(report, indent=2) + "\n")
     print(f"{'OK' if ok else 'FAILED'} in {elapsed:.1f}s -> {out}, {rpath}")
     return EXIT_OK if ok else EXIT_FAILED
+
+
+def cmd_make_splits(args: argparse.Namespace) -> int:
+    import pandas as pd
+
+    from leaksense.config import get_artifacts_dir
+    from leaksense.data.splits import make_splits
+    from leaksense.provenance import file_sha256, provenance
+
+    cases_path = Path(args.cases) if args.cases else get_artifacts_dir() / "cases.parquet"
+    if not cases_path.is_file():
+        raise ConfigError(f"{cases_path} not found; run `leaksense build-index` first")
+    cases = pd.read_parquet(cases_path)
+    from leaksense.data.splits import SplitConfig
+
+    splits = make_splits(cases, SplitConfig(n_seed_trials=args.trials))
+    rpt = Path(args.index_report)
+    sha = json.loads(rpt.read_text()).get("data_manifest_sha256") if rpt.is_file() else None
+    prov = provenance(None, config=splits["config"], seed=splits["config"]["seed"],
+                      manifest_sha256=sha)  # fmt: skip
+    prov["cases_sha256"] = file_sha256(cases_path)
+    out = Path(args.out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps({"provenance": prov, **splits}, indent=2) + "\n")
+
+    print(f"cases: {len(cases)}  scenarios: {cases['scenario_id'].nunique()}")
+    print(f"test: {len(splits['test'])} scenarios; folds: {[len(f) for f in splits['folds']]}")
+    print(f"chosen seed {splits['chosen_seed']}, worst-fold imbalance "
+          f"(small / solo share) {splits['worst_fold_imbalance']:.3f}")  # fmt: skip
+    print("fold   cases pipes small  big pure solo")
+    for r in splits["balance"]:
+        print(f"{r['fold']:>4}  {r['n_cases']:>6} {r['n_pipes']:>5} {r['small']:>5} {r['big']:>4} "
+              f"{r['pure']:>4} {r['solo']:>4}")  # fmt: skip
+    print(f"rare pipes (< {splits['config']['rare_threshold']} cases): {splits['rare_pipes']}")
+    print("no scenario overlap: True (asserted)")
+    print(f"-> {out}")
+    return EXIT_OK
 
 
 def main(argv: Sequence[str] | None = None) -> int:

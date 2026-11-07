@@ -47,7 +47,7 @@ notebooks/kaggle_run.ipynb     # calls the CLI only, no logic
 - `leaksense validate-data [--deep]` asserts D1–D9 and reports D10–D11. It writes `reports/data_validation*.json` and exits non-zero on drift.
 - **Verified:** fast mode passes in 38 s; `--deep` passes in 265 s; manifest `6281be1c3cf2…`. Tests cover 10 corruption cases and confirm the dataset is only read.
 
-### M2: Network graph
+### M2: Network graph — DONE
 - Build from the nominal `$LEAKSENSE_DATA_DIR/Hanoi.inp`. Reuse `leaksense.data.inp.read_network` and `merge_split_pipes`; do not add a second parser. WNTR isn't needed until M7.
 - One nominal graph serves every case. *(data: D9, topology is identical in all 500 scenarios)*
 - Build:
@@ -59,8 +59,9 @@ notebooks/kaggle_run.ipynb     # calls the CLI only, no logic
 - **Verify:**
   - `uv run pytest tests/test_network.py`: 32 nodes, 34 pipes, connected, pipe 1 connects 1 and 2, and the resistance on a hand-computed pipe is correct.
   - `uv run leaksense network-info` prints a summary.
+- **Verified:** 5/5 tests pass (including the real `Hanoi.inp`: 32 nodes, 34 pipes, connected, 3 loops; pipe 1 is 1→2 with resistance 0.1201). `network-info` prints a summary: 39,420 m in total, at most 12 pipe hops, at most 16,300 m network distance.
 
-### M3: Case index and pipe labels
+### M3: Case index and pipe labels — DONE
 - Write `artifacts/cases.parquet` with one row per case:
   - `scenario_id`, `kind` (pure or solo), `pipe` (2–34), `split_fraction`, `leak_type`, `area`
   - `start`, `end` (for solo cases, `end` is clipped to the step before the second leak starts), `n_steps`
@@ -83,12 +84,13 @@ notebooks/kaggle_run.ipynb     # calls the CLI only, no logic
   - `uv run leaksense build-index` prints exactly 244 pure + 245 solo = 489 cases, minus the excluded ones, which are listed.
   - Every case has one pipe in 2–34.
   - Per-pipe pure counts equal the D8 table in `reports/data_validation.json`.
-  - Per-pipe totals (pure + solo) are printed. They should range from 4 (pipe 2) to 26 (pipe 30), matching the inventory's ad-hoc count, which this milestone reproduces from code.
+  - Per-pipe totals (pure + solo) are printed. They range from 4 (pipe 2) to 27 (pipe 30). *(The inventory's hand count said 26: it missed solo leaks on an `Xll` piece, scenarios 46, 269 and 441.)*
   - Synthetic-data tests pass, including an `Xll` scenario and a case with no valid baseline.
+- **Verified:** `build-index` takes about 6 s and writes `reports/case_index.json`. It finds 244 pure + 245 solo = 489 cases with 0 excluded. Baselines: 462 pre, 25 post (8 pure, 17 solo), 2 combined. 10 two-leak scenarios have no solo case. Per-pipe pure counts match D8. 9/9 index tests pass.
 
 ### M4: Features and cache
 - Read only `Node_pressures.csv`, only the columns `2`…`32`, as float32. Cache one `.npz` per scenario under `artifacts/`; the full cache is about 1.1 GB. `configs/cpu_small.yaml` uses a subset of scenarios.
-- **Measure the baseline method instead of assuming it.** Each scenario `.inp` holds a full-year, 30-min demand pattern for every junction, so a weekly cycle was never verified. Compare the leak-free ΔH noise (std on held-out leak-free days) for:
+- **Measure the baseline method instead of assuming it.** Each scenario `.inp` holds a full-year, 30-min demand pattern for every junction, so a weekly cycle was never verified at the junction level. Mean total demand does vary by weekday, by about ±8% (Fri 825, Sun 695 L/s; D12), which supports testing weekday matching. Compare the leak-free ΔH noise (std on held-out leak-free days) for:
   - time-of-day matching
   - time-of-day + weekday matching
   - the most recent N leak-free days with time-of-day matching
@@ -118,7 +120,7 @@ notebooks/kaggle_run.ipynb     # calls the CLI only, no logic
 - **Rare pipes:** pipes with fewer than 6 cases cannot appear in the test fold and in every CV fold.
   - Handle them deterministically: such a pipe goes into the test fold only if at least 2 of its cases remain for training.
   - List them in the split report.
-  - *(data: totals per pipe range from 4 (pipe 2) to 26 (pipe 30))*
+  - *(data: totals per pipe range from 4 (pipe 2) to 27 (pipe 30), `reports/case_index.json`)*
 - Write `splits/splits_v1.json` and commit it.
 - **Verify:** `uv run leaksense make-splits` and `uv run pytest tests/test_splits.py`, which check:
   - no scenario overlap
@@ -158,12 +160,19 @@ notebooks/kaggle_run.ipynb     # calls the CLI only, no logic
   - *(data: within a leak, leak flow is roughly constant)*
 - Use two sizes, the median leak flows from D11: about 97 L/s (small) and about 980 L/s (big). Use flows, not leak areas, because the area-to-flow relationship depends on pressure.
 - **Units:** WNTR works in SI internally, so convert L/s to m³/s. *(data: D5, `UNITS LPS`)*
-- **Demand snapshot:** the nominal `Hanoi.inp` has no patterns and DURATION 0, so its nominal base demands are the snapshot.
+- **Demand levels:** scale every nominal base demand by one global multiplier α. The nominal total (1,538.6 L/s) is about 2× typical demand, and headloss grows as Q^1.852, so the raw nominal values would overstate S.
+  - Use three levels, from total demand ÷ nominal total: low α ≈ 0.23 (p5, about 355 L/s), **mid α ≈ 0.49 (median, about 760 L/s, the default)** and high α ≈ 0.80 (p95, about 1,228 L/s).
+  - Compute α from the training scenarios' `Node_demands.csv` junction columns only. α is a single scalar, not a per-case input.
+  - Never use each scenario's own demand patterns, which are ground truth.
+  - That makes 3 levels × 2 flows × 33 pipes = 198 snapshot runs, and S is 31 × 33 × 3 × 2.
+  - *(data: D12)*
 - If any simulated pressure goes negative at the big size, record it as a warning in the report.
 - **Result:** S, a 31 junctions × 33 pipes matrix for each size.
 - New rung `sigmatch`: cosine similarity between the masked ΔH and each column of S.
 - **Verify:**
-  - `uv run leaksense build-sensitivity` finishes in under 5 minutes on CPU.
+  - `uv run leaksense build-sensitivity` finishes in under 5 minutes on CPU. It prints the α levels used and, per pipe, the cosine similarity between the low, mid and high columns.
+    - If every cosine is above 0.99, `sigmatch` and the M10 prior use mid only.
+    - Otherwise M10 may ablate the three levels as extra inputs.
   - Tests:
     - every entry of S is a pressure drop (≤ 0)
     - no two columns are identical

@@ -30,15 +30,66 @@ def build_parser() -> argparse.ArgumentParser:
     v.add_argument("--contract", help="JSON file overriding the default data contract")
     v.add_argument("--quiet", action="store_true", help="no progress output")
     v.set_defaults(func=cmd_validate_data)
+
+    n = sub.add_parser("network-info", help="summary of the nominal network graph (Hanoi.inp)")
+    n.add_argument("--data-dir", help=f"dataset HanoiOK folder (default: ${DATA_DIR_VAR})")
+    n.add_argument("--json", action="store_true", help="print the summary as JSON")
+    n.set_defaults(func=cmd_network_info)
+
+    b = sub.add_parser("build-index", help="build the case index (artifacts/cases.parquet)")
+    b.add_argument("--data-dir", help=f"dataset HanoiOK folder (default: ${DATA_DIR_VAR})")
+    b.add_argument("--out", help="parquet path (default: $LEAKSENSE_ARTIFACTS_DIR/cases.parquet)")
+    b.add_argument("--report", default="reports/case_index.json", help="JSON summary path")
+    b.add_argument(
+        "--validation",
+        default="reports/data_validation.json",
+        help="M1 report to cross-check per-pipe pure counts against (skipped if missing)",
+    )
+    b.add_argument("--contract", help="JSON file overriding the default data contract")
+    b.add_argument("--quiet", action="store_true", help="no progress output")
+    b.set_defaults(func=cmd_build_index)
     return parser
+
+
+def _data_dir(args: argparse.Namespace) -> Path:
+    return get_data_dir({DATA_DIR_VAR: args.data_dir} if args.data_dir else None)
+
+
+def cmd_network_info(args: argparse.Namespace) -> int:
+    from leaksense.network import load_nominal_network
+
+    net = load_nominal_network(_data_dir(args))
+    s = net.summary()
+    if args.json:
+        print(json.dumps(s, indent=2))
+        return EXIT_OK
+    print(f"nodes: {s['n_nodes']} ({s['n_junctions']} junctions, reservoir {s['reservoirs']})")
+    print(
+        f"pipes: {s['n_pipes']} ({s['n_leak_eligible_pipes']} leak-eligible, "
+        f"never leaking {s['never_leaking_pipes']})"
+    )
+    print(f"sensor candidates: {s['n_sensor_candidates']}")
+    print(
+        f"connected: {s['connected']}  loops: {s['n_loops']}  degree counts: {s['degree_counts']}"
+    )
+    print(
+        f"length: total {s['total_length_m']:,.0f} m, per pipe "
+        f"{s['length_m'][0]:,.0f}-{s['length_m'][1]:,.0f} m"
+    )
+    print(f"diameters (mm): {s['diameters_mm']}  roughness: {s['roughness']}")
+    print(f"H-W resistance (SI, Q in m^3/s): {s['resistance'][0]:.4g}-{s['resistance'][1]:.4g}")
+    print(
+        f"max pipe hops: {s['max_pipe_hops']}  max network distance: {s['max_node_dist_m']:,.0f} m"
+    )
+    print(f"total nominal base demand: {s['total_base_demand_lps']:,.1f} L/s")
+    return EXIT_OK
 
 
 def cmd_validate_data(args: argparse.Namespace) -> int:
     from leaksense.data.contract import DataContract
     from leaksense.data.validate import validate_dataset
 
-    env = {DATA_DIR_VAR: args.data_dir} if args.data_dir else None
-    data_dir = get_data_dir(env)
+    data_dir = _data_dir(args)
     contract = DataContract.from_json(args.contract) if args.contract else DataContract()
     t0 = time.perf_counter()
     report = validate_dataset(data_dir, contract, deep=args.deep, progress=not args.quiet)
@@ -63,6 +114,77 @@ def cmd_validate_data(args: argparse.Namespace) -> int:
             print(f"         ... {check.n_errors - 3} more (see {out})")
     print(f"{'OK' if report.ok else 'FAILED'} in {elapsed:.1f}s -> {out}")
     return EXIT_OK if report.ok else EXIT_FAILED
+
+
+def cmd_build_index(args: argparse.Namespace) -> int:
+    from leaksense.config import get_artifacts_dir
+    from leaksense.data.index import build_index
+    from leaksense.provenance import provenance
+
+    data_dir = _data_dir(args)
+    t0 = time.perf_counter()
+    from leaksense.data.contract import DataContract
+
+    contract = DataContract.from_json(args.contract) if args.contract else DataContract()
+    result = build_index(data_dir, contract, progress=not args.quiet)
+    elapsed = time.perf_counter() - t0
+    s = result.summary()
+
+    out = Path(args.out) if args.out else get_artifacts_dir() / "cases.parquet"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    result.cases.to_parquet(out, index=False)
+    report = {**provenance(data_dir, config=s["config"]), "elapsed_seconds": round(elapsed, 1)}
+    report.update(s)
+
+    cand, cases = s["candidates"], s["cases"]
+    print(f"candidates: {cand['pure']} pure + {cand['solo']} solo = {cand['total']}")
+    print(f"excluded (no baseline): {s['n_excluded']}")
+    for e in s["excluded"]:
+        print(f"  {e['case_id']}  pipe {e['pipe']}: {e['reason']}")
+    print(f"cases: {cases['pure']} pure + {cases['solo']} solo = {cases['total']}")
+    print(f"two-leak scenarios without a solo case: {len(s['two_leak_without_solo'])}")
+    for e in s["two_leak_without_solo"]:
+        print(f"  Scenario-{e['scenario_id']}: solo segment {e['solo_steps']} steps")
+    print(f"baseline kind: {s['baseline_kind']}  by case kind: {s['baseline_kind_by_kind']}")
+    print(
+        f"solo cases clipped by the second leak: {s['solo_clipped']}; "
+        f"solo cases whose first leak is leak_node1: {s['solo_first_leak_is_leak_node1']}"
+    )
+    print(f"n_steps: {s['n_steps']}  short (<24 h): {s['flag_short_case']}")
+    print(f"leak type: {s['leak_type']}  leak flow L/s: {s['leak_flow_lps']}")
+
+    pipes = s["per_pipe"]
+    bad_pipes = [p for p in pipes if not (p.isdigit() and 2 <= int(p) <= 34)]
+    print(f"pipes: {len(pipes)} distinct, all in 2-34: {not bad_pipes}")
+    print("pipe  pure  solo  total")
+    for p, r in pipes.items():
+        print(f"{p:>4}  {r['pure']:>4}  {r['solo']:>4}  {r['total']:>5}")
+    totals = {p: r["total"] for p, r in pipes.items()}
+    if totals:
+        lo, hi = min(totals, key=totals.get), max(totals, key=totals.get)
+        print(f"totals range: {totals[lo]} (pipe {lo}) to {totals[hi]} (pipe {hi})")
+
+    ok = not bad_pipes
+    vpath = Path(args.validation)
+    if vpath.is_file():
+        v = json.loads(vpath.read_text())
+        d8 = next(c for c in v["checks"] if c["id"] == "D8")["details"]
+        expected = d8["single_leak_scenarios_per_pipe"]
+        # Compare against candidate pure cases: exclusions are reported separately above.
+        got = {p: r["pure"] for p, r in pipes.items() if r["pure"]}
+        for e in s["excluded"]:
+            if e["kind"] == "pure":
+                got[e["pipe"]] = got.get(e["pipe"], 0) + 1
+        same = got == expected
+        ok &= same
+        print(f"per-pipe pure counts (before exclusion) match {vpath} D8: {same}")
+        report["d8_pure_counts_match"] = same
+
+    rpath = Path(args.report)
+    rpath.parent.mkdir(parents=True, exist_ok=True)
+    rpath.write_text(json.dumps(report, indent=2) + "\n")
+    print(f"{'OK' if ok else 'FAILED'} in {elapsed:.1f}s -> {out}, {rpath}")
+    return EXIT_OK if ok else EXIT_FAILED
 
 
 def main(argv: Sequence[str] | None = None) -> int:

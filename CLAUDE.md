@@ -34,7 +34,7 @@ uv run leaksense --help                  # CLI: validate-data, build-index, buil
 
 - **No oracle inputs.**
   - Never build features from `leak_node*` columns. Those columns are pressure measured at the leak itself.
-  - Never use `Node_demands.csv` or `Link_flows.csv` as features. They contain the leak flow.
+  - Never use `Node_demands.csv` or `Link_flows.csv` as features. They contain the leak flow: in `Node_demands.csv` it is in the reservoir column `1` (its `leak_node*` columns are all 0); in `Link_flows.csv` it is in the split-pipe flows.
   - Sensors may only be the 31 junctions `2`…`32`. The reservoir `1` always has pressure 0.
   - The old "physics loss" built from simulated flows was a label leak. Do not bring it back. Physics enters only through inputs computed from the nominal `Hanoi.inp`, such as the WNTR sensitivity matrix.
 - **Labels.** The label is the pipe that was split to insert the leak. Pipe `X` becomes `X` + `Xl`, or `Xll` when the same pipe is split twice. There are 33 classes, pipes 2–34, because pipe 1 never leaks. Chance top-1 is therefore 1/33.

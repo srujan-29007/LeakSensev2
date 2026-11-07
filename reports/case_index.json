@@ -1,0 +1,328 @@
+{
+  "leaksense_version": "0.1.0",
+  "generated_at": "2026-11-07T20:03:48+00:00",
+  "git": {
+    "commit": "9b78f837f7ecf4f18b7cfb45688f6dac88518b52",
+    "dirty": false
+  },
+  "data_manifest_sha256": "6281be1c3cf2ad971298fdcd672b17e602da7e5dcca86d23c52b924ecf5dccdf",
+  "config": {
+    "min_solo_steps": 144,
+    "min_baseline_steps": 672,
+    "short_case_steps": 48
+  },
+  "seed": null,
+  "elapsed_seconds": 13.3,
+  "n_scenarios": 500,
+  "candidates": {
+    "pure": 244,
+    "solo": 245,
+    "total": 489
+  },
+  "cases": {
+    "pure": 244,
+    "solo": 245,
+    "total": 489
+  },
+  "n_excluded": 0,
+  "excluded": [],
+  "two_leak_without_solo": [
+    {
+      "scenario_id": 56,
+      "solo_steps": 10,
+      "first": "leak_node0",
+      "pipes": [
+        "10",
+        "26"
+      ]
+    },
+    {
+      "scenario_id": 117,
+      "solo_steps": 131,
+      "first": "leak_node1",
+      "pipes": [
+        "21",
+        "19"
+      ]
+    },
+    {
+      "scenario_id": 167,
+      "solo_steps": 73,
+      "first": "leak_node1",
+      "pipes": [
+        "21",
+        "16"
+      ]
+    },
+    {
+      "scenario_id": 190,
+      "solo_steps": 119,
+      "first": "leak_node1",
+      "pipes": [
+        "27",
+        "30"
+      ]
+    },
+    {
+      "scenario_id": 267,
+      "solo_steps": 48,
+      "first": "leak_node0",
+      "pipes": [
+        "22",
+        "18"
+      ]
+    },
+    {
+      "scenario_id": 278,
+      "solo_steps": 45,
+      "first": "leak_node0",
+      "pipes": [
+        "10",
+        "3"
+      ]
+    },
+    {
+      "scenario_id": 289,
+      "solo_steps": 25,
+      "first": "leak_node0",
+      "pipes": [
+        "25",
+        "18"
+      ]
+    },
+    {
+      "scenario_id": 324,
+      "solo_steps": 57,
+      "first": "leak_node1",
+      "pipes": [
+        "14",
+        "12"
+      ]
+    },
+    {
+      "scenario_id": 469,
+      "solo_steps": 142,
+      "first": "leak_node1",
+      "pipes": [
+        "9",
+        "33"
+      ]
+    },
+    {
+      "scenario_id": 475,
+      "solo_steps": 106,
+      "first": "leak_node0",
+      "pipes": [
+        "25",
+        "19"
+      ]
+    }
+  ],
+  "baseline_kind": {
+    "pre": 462,
+    "post": 25,
+    "combined": 2
+  },
+  "baseline_kind_by_kind": {
+    "pure/post": 8,
+    "pure/pre": 236,
+    "solo/combined": 2,
+    "solo/post": 17,
+    "solo/pre": 226
+  },
+  "per_pipe": {
+    "2": {
+      "pure": 2,
+      "solo": 2,
+      "total": 4
+    },
+    "3": {
+      "pure": 5,
+      "solo": 11,
+      "total": 16
+    },
+    "4": {
+      "pure": 6,
+      "solo": 7,
+      "total": 13
+    },
+    "5": {
+      "pure": 5,
+      "solo": 7,
+      "total": 12
+    },
+    "6": {
+      "pure": 2,
+      "solo": 6,
+      "total": 8
+    },
+    "7": {
+      "pure": 5,
+      "solo": 11,
+      "total": 16
+    },
+    "8": {
+      "pure": 8,
+      "solo": 9,
+      "total": 17
+    },
+    "9": {
+      "pure": 8,
+      "solo": 5,
+      "total": 13
+    },
+    "10": {
+      "pure": 9,
+      "solo": 9,
+      "total": 18
+    },
+    "11": {
+      "pure": 4,
+      "solo": 8,
+      "total": 12
+    },
+    "12": {
+      "pure": 9,
+      "solo": 13,
+      "total": 22
+    },
+    "13": {
+      "pure": 8,
+      "solo": 13,
+      "total": 21
+    },
+    "14": {
+      "pure": 9,
+      "solo": 8,
+      "total": 17
+    },
+    "15": {
+      "pure": 6,
+      "solo": 5,
+      "total": 11
+    },
+    "16": {
+      "pure": 9,
+      "solo": 5,
+      "total": 14
+    },
+    "17": {
+      "pure": 12,
+      "solo": 11,
+      "total": 23
+    },
+    "18": {
+      "pure": 12,
+      "solo": 3,
+      "total": 15
+    },
+    "19": {
+      "pure": 7,
+      "solo": 5,
+      "total": 12
+    },
+    "20": {
+      "pure": 5,
+      "solo": 5,
+      "total": 10
+    },
+    "21": {
+      "pure": 5,
+      "solo": 7,
+      "total": 12
+    },
+    "22": {
+      "pure": 4,
+      "solo": 12,
+      "total": 16
+    },
+    "23": {
+      "pure": 6,
+      "solo": 8,
+      "total": 14
+    },
+    "24": {
+      "pure": 8,
+      "solo": 9,
+      "total": 17
+    },
+    "25": {
+      "pure": 12,
+      "solo": 6,
+      "total": 18
+    },
+    "26": {
+      "pure": 13,
+      "solo": 8,
+      "total": 21
+    },
+    "27": {
+      "pure": 5,
+      "solo": 9,
+      "total": 14
+    },
+    "28": {
+      "pure": 7,
+      "solo": 8,
+      "total": 15
+    },
+    "29": {
+      "pure": 6,
+      "solo": 5,
+      "total": 11
+    },
+    "30": {
+      "pure": 16,
+      "solo": 11,
+      "total": 27
+    },
+    "31": {
+      "pure": 8,
+      "solo": 6,
+      "total": 14
+    },
+    "32": {
+      "pure": 9,
+      "solo": 6,
+      "total": 15
+    },
+    "33": {
+      "pure": 9,
+      "solo": 4,
+      "total": 13
+    },
+    "34": {
+      "pure": 5,
+      "solo": 3,
+      "total": 8
+    }
+  },
+  "leak_type": {
+    "small": 255,
+    "big": 234
+  },
+  "solo_clipped": 118,
+  "solo_first_leak_is_leak_node1": 121,
+  "n_steps": {
+    "min": 37,
+    "median": 3489.0,
+    "max": 16523
+  },
+  "flag_short_case": [
+    "S069-pure",
+    "S429-pure"
+  ],
+  "leak_flow_lps": {
+    "big": {
+      "min": 69.77,
+      "median": 945.83,
+      "max": 6101.87
+    },
+    "small": {
+      "min": 3.96,
+      "median": 94.61,
+      "max": 988.24
+    }
+  },
+  "d8_pure_counts_match": true
+}

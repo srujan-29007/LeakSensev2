@@ -44,6 +44,29 @@ Other values confirmed by the validator:
 
 Scenarios sampled in detail: 1 (no leak), 2 and 250 (two leaks), 34 and 500 (one leak), 229 (small single leak), 273 (shortest leak). The checks on counts, headers, info files and `.inp` header sections ran over all 500 scenarios.
 
+## 0b. Demand audit (2026-11-08)
+
+A read-only script read all 500 `Node_demands.csv` in 65 s.
+
+- **Units are L/s, and demand is demand-driven.** In Scenarios 1 and 34, every junction value equals that scenario's `.inp` base demand (`UNITS LPS`) × its `P_<node>` multiplier, to within 6e-5. Junction demand never reacts to pressure or to the leak.
+- **Mass balance.** In all 500 scenarios, reservoir `1` = −(junctions 2…32 + leak flow from `Leaks/*_demand.csv`), to within 6e-5.
+- **Leak columns.** All 754 `leak_node*` columns in `Node_demands.csv` are identically 0. The leak flow is only in `Leaks/` and in the reservoir supply.
+- **Nominal base demand.** The base demands in `Hanoi.inp` total **1,538.6 L/s**. Each one is the textbook Hanoi demand in m³/h divided by 12.96 (= 3.6²); for example, node 2: 68.672 × 12.96 = 890 m³/h. LeakDB therefore carries 1/3.6 of the textbook demand. The data is consistent with itself, so it is used as it is.
+- **Pattern multipliers** average 0.499, and half of them are exactly 0. That is why actual demand is about half the base total.
+
+Total consumer demand (junctions 2…32), in L/s:
+
+| Scope | min | p5 | median | mean | p95 | max |
+|---|---|---|---|---|---|---|
+| all 500 scenarios × 17,520 steps | 25.1 | 354.9 | 760.1 | 766.7 | 1,227.7 | 2,330.1 |
+| per-scenario mean (500 values) | 720.2 | 746.0 | 766.8 | 766.7 | 787.4 | 812.6 |
+| Scenario-1 only | 117.2 | 355.7 | 761.3 | 766.8 | 1,223.0 | 2,100.3 |
+
+Mean over the 500 scenarios by period:
+- by hour: about 408 L/s (03:00) to 1,014 (10:00)
+- by weekday: Mon 769, Tue 771, Wed 782, Thu 776, Fri 825, Sat 749, Sun 695. This is a weekly cycle of about ±8% in the mean.
+- by month: 668 (Dec) to 889 (Jul)
+
 ## 1. Folder layout
 
 ```
@@ -63,7 +86,7 @@ Scenarios sampled in detail: 1 (no leak), 2 and 250 (two leaks), 34 and 500 (one
 |---|---|---|
 | `Hanoi_Scenario-N.inp` | ~5.3 MB | Full EPANET network with per-scenario parameters and 30-min demand patterns (`P_<node>`), plus the leak junction(s) and split pipe(s) |
 | `Node_pressures.csv` | ~5.3–5.6 MB | 17,520 rows. Columns: unnamed timestamp, `2`…`32`, `leak_node0`[, `leak_node1`], `1` |
-| `Node_demands.csv` | ~4.1 MB | Same columns as pressures. The reservoir `1` has negative demand (supply). The `leak_node*` columns hold the leak outflow |
+| `Node_demands.csv` | ~4.1 MB | Same columns as pressures. The reservoir `1` has negative demand (supply). Junction values are exactly base demand × pattern (L/s). The `leak_node*` columns are **always 0** (all 754). The reservoir column carries the leak: `1` = −(junctions + leak flow) |
 | `Link_flows.csv` | ~5.8–6.2 MB | 17,520 rows. Columns: unnamed timestamp, `1`…`34`, plus one `<pipe>l` per leak |
 | `Labels.csv` | 438,017 B (same for all 500) | `Timestamp,Label`, with Label 0.0/1.0 = "any leak active" |
 | `Scenario-N_info.csv` | ~215 B | `Description , Value` rows: Network_Name, Duration (8760 hours), Time_Step (30.0 min), Uncertainty_Topology (NO), Uncertainty_Length/Diameter/Roughness (%) |
@@ -110,7 +133,7 @@ Leak End , 2024-12-09 10:30:00    <- inclusive
   - Across leaks the flow varies widely (deep validation, median over each leak's active period):
     - small: 3.96–997 L/s, median 97
     - big: 69–8,994 L/s, median 980
-    - The two types overlap. For scale, the whole network's demand is about 640 L/s.
+    - The two types overlap. For scale, total consumer demand has a median of 760 L/s and a mean of 767 L/s over all scenarios and timesteps (§0b). *Correction: an earlier "about 640 L/s" was one timestep, the Scenario-1 reservoir supply at 2024-01-01 00:00 (−644 L/s).*
   - Leak area: small 0.0001–0.042 m² (median 0.0035), big 0.0026–0.78 m² (median 0.070).
 - **Link to `Labels.csv`.** The per-scenario `Labels.csv` is 1 exactly when at least one leak is active, so it is the union of the leaks' active windows. The top-level `Labels.csv` value equals the number of leak info files in all 500 scenarios.
 - **Which pipe leaks.** Each leak is a new junction inserted by splitting a pipe. In the scenario `.inp`, pipe `X: a→b` becomes `X: a→leak_nodeK` and `Xl: leak_nodeK→b`. Both pieces keep X's diameter and roughness.
@@ -124,7 +147,7 @@ Leak End , 2024-12-09 10:30:00    <- inclusive
   - Single-leak scenarios: minimum 18 h, 2 under 24 h, 11 under 7 days, median 85 days.
   - Leak start times are spread across the whole year, 53–82 per month.
   - Pre-leak history in single-leak scenarios: 1 scenario has under 1 day, 4 under 7 days, 8 under 14 days.
-- **Two-leak scenarios.** 245 of the 255 have at least 3 days in which only the first leak is active (a "solo segment").
+- **Two-leak scenarios.** 245 of the 255 have at least 3 days in which only the first leak is active (a "solo segment"). The first leak is the earliest to start; in 126 of the 255 that is `leak_node1`, not `leak_node0`.
 
 ## 4. Are the .inp files the same across scenarios?
 
@@ -149,8 +172,8 @@ The nominal `Hanoi.inp` is the right network for the graph and for the sensitivi
 
 ## 5. Inconsistencies, gaps and surprises
 
-1. **Oracle columns.** `Node_pressures.csv` and `Node_demands.csv` include `leak_nodeK` columns, which means a "sensor" sits on the leak itself. `Link_flows.csv` includes the split-pipe flows. All of these must be excluded from features.
-2. **Big leaks are often extreme.** Median flow is 980 L/s, above the whole network's demand, and the largest reaches 8,994 L/s. In Scenario 34 (pipe 22, about 665 L/s) the end node's mean pressure drops by **61 m**, its neighbour's by 33 m, and every other node's by at most 4 m. These leaks will be easy to locate with dense sensors, so headline metrics must be broken down.
+1. **Oracle columns.** `Node_pressures.csv` includes `leak_nodeK` columns, which means a "sensor" sits on the leak itself. In `Node_demands.csv` those columns are all 0, but its reservoir column equals −(consumer demand + leak flow), so the file is still an oracle. `Link_flows.csv` includes the split-pipe flows. All of these must be excluded from features.
+2. **Big leaks are often extreme.** Median flow is 980 L/s, above the mean total consumer demand of 767 L/s, and the largest reaches 8,994 L/s. In Scenario 34 (pipe 22, about 665 L/s) the end node's mean pressure drops by **61 m**, its neighbour's by 33 m, and every other node's by at most 4 m. These leaks will be easy to locate with dense sensors, so headline metrics must be broken down.
 3. **Small leaks are close to the noise.** In Scenario 229 (pipe 32, about 109 L/s, close to the small-leak median) the largest mean pressure drop is **1.25 m**. Pressure moves about 0.5 m between consecutive timesteps because of stochastic demands; many junction demands are exactly 0 at a given step.
    - Single timesteps are therefore noisy, and windowing or averaging is needed.
    - The smallest leaks (around 4 L/s) are likely impossible to locate from pressure alone.
@@ -160,7 +183,7 @@ The nominal `Hanoi.inp` is the right network for the graph and for the sensitivi
 7. **Scenario-1 has no `Leaks/` folder.** The old code assumed an empty folder; code must cope with it being absent.
 8. **The leak info CSV has a header row** (`Description , Value`), and its keys and values carry stray spaces. The old `pd.read_csv` call happened to work because of the header row.
 9. **Too little pre-leak history in a few cases.** 8 single-leak scenarios have under 14 days before the leak starts, so they need a post-leak baseline as a fallback.
-10. **Pipe 1 is never a label,** so there are 33 classes and chance accuracy is 1/33. Pipes 2 and 6 have only 2 pure single-leak scenarios each, plus 2 and 5 solo segments respectively.
+10. **Pipe 1 is never a label,** so there are 33 classes and chance accuracy is 1/33. Pipes 2 and 6 have only 2 pure single-leak scenarios each, plus 2 and 6 solo segments respectively. *Correction (M3): the hand count said 5 for pipe 6; it missed solo leaks on an `Xll` piece. `reports/case_index.json` has the full table.*
 11. **The second leak in Scenario 273 lasts zero length** (start equals end). Harmless here, since only the first leak's solo segment is used.
 
 ## 6. Status of the SPEC assumptions A1–A14 (previous draft)

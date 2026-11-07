@@ -1,6 +1,6 @@
 # LeakSense: Specification
 
-- **Status:** M0 and M1 are done. The data contract is verified and enforced by `leaksense validate-data` (see `reports/data_inventory.md`).
+- **Status:** M0–M3 are done. The data contract is verified and enforced by `leaksense validate-data` (see `reports/data_inventory.md`).
 - **Last updated:** 2026-11-08
 
 ## 1. Problem
@@ -104,7 +104,9 @@ A single leak has already been detected on the Hanoi water network (LeakDB). Pre
 
 - **Case.** One labelled single-leak episode. There are two kinds:
   - **pure:** one of the 244 single-leak scenarios
-  - **solo:** the stretch of at least 3 days in a two-leak scenario, from the first leak's start until the second leak starts or the first leak ends, whichever comes first. 245 scenarios have one.
+  - **solo:** the stretch of at least 3 days (144 steps) in a two-leak scenario, from the first leak's start until the step before the second leak starts or the first leak ends, whichever comes first. 245 scenarios have one.
+    - The **first leak is the one that starts first**, not `leak_node0`: in 126 of the 255 two-leak scenarios `leak_node1` starts earlier (121 of the 245 solo cases use `leak_node1`).
+    - The label is mapped by leak ID. In 3 solo cases (scenarios 46, 269, 441) the first leak sits on the `Xll` piece.
 
   That gives about 489 cases. A two-leak scenario contributes at most one case.
 - **Label.** The pipe that was split to insert the leak. The pipe ID comes from the `Xl` link name, or from the scenario `.inp`.
@@ -207,3 +209,4 @@ The dataset manifest sha256 is `6281be1c3cf2…`. The evidence is in `reports/da
 | D9 | Topology and node coordinates are identical to `Hanoi.inp` in every scenario, once the split pipes are merged back. Per scenario, pipe length, diameter and roughness, and junction base demands, each differ from nominal by at most ±20%. Uncertainty levels are 5, 10, 15 or 20% (64 combinations). Demand patterns also differ per scenario. |
 | D10 | Coordinates are not to scale: pipe length ÷ coordinate distance ranges from 0.13 to 5.99. All distances use pipe lengths. |
 | D11 | Leak flow (the median over each leak's active period) is 3.96–997 L/s for small leaks (median 97) and 69–8,994 L/s for big leaks (median 980). Leak type is the generator's label, not a disjoint size class. Leak flow is ground truth and is used only for reporting, never as an input. |
+| D12 | Demands are in L/s and demand-driven: each junction's demand = scenario base demand × pattern, with no pressure dependence. The `leak_node*` columns of `Node_demands.csv` are always 0. Reservoir `1` = −(consumer demand + leak flow), so the file is still an oracle. Total consumer demand over all scenarios and steps: median 760 L/s (p5 355, mean 767, p95 1,228, max 2,330). The nominal `Hanoi.inp` base total is 1,538.6 L/s, about 2× typical demand (multipliers average 0.5). See `reports/data_inventory.md` §0b. |

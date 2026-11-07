@@ -158,3 +158,82 @@ def test_cli_train(cli_env, capsys):
     capsys.readouterr()
     assert main([*base, "--fold", "7"]) != 0
     assert "--fold must be one of" in capsys.readouterr().err
+
+
+# ----------------------------------------------------------------------------- GBM
+
+
+def _gbm(**kw):
+    from leaksense.models.gbm import MaskedGBM
+
+    return MaskedGBM(FakeNet(), {"val_frac": 0.0, "num_threads": 1, **kw})
+
+
+def test_gbm_overfits_five_cases():
+    cases, windows = _cases([0, 7, 13, 21, 32])
+    m = _gbm(k_min=31, n_masks=1, min_child_samples=1, max_rounds=60, bagging_fraction=1.0)
+    m.fit(cases, windows)
+    pred = m.batch_scores(windows, np.ones(J, bool)).argmax(axis=1)
+    assert (pred == cases["y"].to_numpy()).all()
+
+
+def test_gbm_masking_determinism_and_batch():
+    cases, windows = _cases([0, 1, 2, 3, 4])
+    a, b = _gbm(max_rounds=10, min_child_samples=2), _gbm(max_rounds=10, min_child_samples=2)
+    a.fit(cases, windows)
+    b.fit(cases, windows)
+    mask = np.zeros(J, bool)
+    mask[[1, 4, 30]] = True
+    s = a.batch_scores(windows, mask)
+    assert s.shape == (5, C) and np.array_equal(s, b.batch_scores(windows, mask))
+    x = windows[0].copy()
+    x[:, ~mask] = -1e3
+    assert np.allclose(a.case_scores(x, mask), s[0])
+
+
+def test_gbm_early_stopping_and_grid():
+    cases, windows = _cases(list(range(10)) * 8, n_windows=3, noise=0.3)
+    m = _gbm(
+        transform=["none", "scale_magnitude"],
+        val_frac=0.2,
+        max_rounds=40,
+        early_stopping=5,
+        n_masks=2,
+        min_child_samples=5,
+    )
+    m.fit(cases, windows)
+    h = m.history[0]
+    assert len(h["trials"]) == 2 and 1 <= h["epochs"] <= 40 and h["n_inner_val_cases"] == 10
+
+
+def test_cli_train_gbm(cli_env):
+    from leaksense.cli import main
+
+    tmp_path, common = cli_env
+    assert main(["build-features", *common, "--quiet"]) == 0
+    cfg = tmp_path / "cfg.yaml"
+    cfg.write_text(
+        cfg.read_text() + "model:\n  kind: gbm\n  max_rounds: 5\n  val_frac: 0.0\n"
+        "  min_child_samples: 1\n  num_threads: 1\n"
+    )
+    args = common[:4] + common[6:]
+    rep = tmp_path / "rep"
+    rc = main(
+        [
+            "train",
+            "--k",
+            "2,4",
+            "--draws",
+            "2",
+            "--bootstrap",
+            "20",
+            "--splits",
+            str(tmp_path / "splits.json"),
+            "--reports-dir",
+            str(rep),
+            *args,
+        ]
+    )
+    assert rc == 0
+    r = json.loads((rep / "gbm.json").read_text())
+    assert r["model"] == "gbm" and len(r["training"]["folds"]) == 2

@@ -1,0 +1,32 @@
+# M8 masked LightGBM. Features: same block as full.yaml (shares its cache). Settings given as
+# lists are chosen per fold on an inner validation split of the training scenarios.
+name: gbm_cpu
+seed: 0
+n_scenarios: null
+features:
+  slot: tod_weekday
+  baseline_days: 14
+  estimator: mean
+  window: 48
+  stride: 24
+  max_lag_days: 7
+  max_windows_per_case: 32
+  pre_guard_steps: 0
+  snr_holdout_days: 3.0
+model:
+  kind: gbm
+  transform: [scale_magnitude, none]  # signed_log1p is monotone: trees give the same result as none
+  n_masks: 4
+  k_min: 1
+  num_leaves: 15
+  learning_rate: 0.1
+  max_rounds: 1000
+  early_stopping: 50
+  min_child_samples: 20
+  feature_fraction: 0.8
+  bagging_fraction: 0.8
+  lambda_l2: 1.0
+  class_weight: inverse
+  val_frac: 0.15
+  num_threads: 4  # faster than all cores on this small data
+  seed: 0

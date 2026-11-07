@@ -401,7 +401,7 @@ def render_markdown(report: dict) -> str:
                 "",
             ]
         lines += [
-            "| fold | train cases | inner-val cases | chosen | epochs | inner-val loss |",
+            "| fold | train cases | inner-val cases | chosen | epochs / rounds | inner-val loss |",
             "|---|---|---|---|---|---|",
         ]
         for f, h in zip(tr["eval_folds"], tr["folds"], strict=True):

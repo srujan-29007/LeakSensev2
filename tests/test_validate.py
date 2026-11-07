@@ -145,6 +145,8 @@ def test_cli_writes_report_and_sets_exit_code(synthetic, tmp_path):
     payload = json.loads(out.read_text())
     assert payload["ok"] is True and len(payload["checks"]) == 10
     assert str(data_dir) not in out.read_text()  # no absolute paths in reports
+    assert payload["git"]["commit"] and "seed" in payload  # provenance (CLAUDE.md)
+    assert payload["manifest"]["sha256"] and payload["contract"]
 
     corrupt_missing_file(data_dir)
     assert main(args) == 1

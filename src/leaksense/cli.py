@@ -112,7 +112,12 @@ def cmd_validate_data(args: argparse.Namespace) -> int:
 
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
+    from leaksense.provenance import git_commit
+
     payload = report.to_dict()
+    # Provenance (CLAUDE.md): the config is the contract; validation has no randomness.
+    payload["git"] = git_commit()
+    payload["seed"] = None
     payload["elapsed_seconds"] = round(elapsed, 1)
     out.write_text(json.dumps(payload, indent=2) + "\n")
 

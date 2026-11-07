@@ -217,7 +217,7 @@ notebooks/kaggle_run.ipynb     # calls the CLI only, no logic
   - **At k = 31:** top-1 is 33.7% for `maxdh`, 58.0% for `sigmatch` and 64.0% for `sigmatch_all`. Top-3 is about the same for all three (88.5–91.2%).
   - 9 sensitivity tests pass, plus a real-data test.
 
-### M8: Learned tabular rungs (MLP, GBM) with masking
+### M8: Learned tabular rungs (MLP, GBM) with masking — DONE
 - Input is `[ΔH·m, m]` over the 31 junctions, after the M4 input transform. The mask size k is drawn uniformly from 1 to 31. The output is 33 classes.
 - Class-weighted loss, with the weights computed on each training fold. *(data: 4–26 cases per pipe)*
 - Case-weighted sampling from M4.
@@ -225,6 +225,26 @@ notebooks/kaggle_run.ipynb     # calls the CLI only, no logic
   - `uv run leaksense train --config configs/mlp_cpu.yaml` finishes in under 10 minutes on CPU.
   - The model overfits a set of 5 cases.
   - Accuracy-vs-k curves, with all M6 breakdowns, are written to `reports/`.
+- **Harness changes:** the model is fitted once per fold and then scored at every k and mask draw (it was refitted per k). `fit` now gets the training cases and their windows, and a model may define `batch_scores`. The `model:` section of a run config is left out of the feature hash, so model configs share the feature cache.
+- **Protocol (both rungs):**
+  - Sample weight = (1 / windows in its case) × inverse-frequency class weight from the training fold.
+  - Settings given as lists in the config are chosen per fold on an inner validation split (about 15% of each pipe's training scenarios, grouped by scenario; pipes with under 7 training cases stay in training). Early stopping uses the same split; the model is then refitted on the whole training fold for the chosen number of epochs or rounds.
+  - A case's score is the mean of its windows' log-probabilities.
+  - MLP: 2 × 256, dropout 0.2, a fresh mask per sample and epoch. GBM: LightGBM, each training window repeated with 4 random masks, 4 threads.
+- **Verified** (419 CV cases, commit `2acb356`):
+  - `train --config configs/mlp_cpu.yaml` took 590 s and `configs/gbm_cpu.yaml` took 242 s, run at the same time on one laptop CPU.
+  - Both overfit 5 cases; 14 tests in `tests/test_learned.py` pass.
+  - **Input transform:** inner validation chose `scale_magnitude` in all 5 folds for both models. For trees `signed_log1p` is identical to `none` (a monotone per-feature transform does not change splits), so the GBM grid leaves it out.
+  - **Results** (%, [95% CI]):
+
+    | rung | k = 8 top-3 | k = 8 small-leak top-3 | k = 31 top-1 | k = 31 top-3 |
+    |---|---|---|---|---|
+    | `maxdh` | 43.1 [41.0, 45.0] | 43.1 | 33.7 | 88.8 |
+    | `sigmatch_all` | **78.4** [75.7, 81.2] | **68.5** | 64.0 [59.4, 68.5] | **91.2** |
+    | `mlp` | 63.3 [60.2, 66.3] | 53.2 | 53.7 [48.9, 58.5] | 88.5 |
+    | `gbm` | 58.9 [56.1, 61.7] | 51.0 | **69.7** [65.2, 74.2] | 90.0 |
+
+  - **Reading:** with about 335 training cases for 33 classes, neither tabular model gets close to `sigmatch_all` at small k: with few sensors, a physics signature beats what 335 cases can teach. With all 31 sensors the GBM has the best top-1 (69.7 vs 64.0; the CIs overlap). Its largest gains are on the biggest leaks (top leak-flow tercile, k = 31 top-1 83.6 vs 73.6). The MLP is better than the GBM at small k and worse at k = 31. That gap is the case for M10's S-based prior.
 
 ### M9: Masked GAT
 - 4 GATv2 layers encode the nodes.

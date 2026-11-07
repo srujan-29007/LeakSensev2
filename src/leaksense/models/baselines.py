@@ -20,7 +20,7 @@ class Chance:
     def __init__(self, net: Network) -> None:
         self.n = len(net.leak_pipe_ids)
 
-    def fit(self, train: pd.DataFrame) -> None:
+    def fit(self, train: pd.DataFrame, windows: list[np.ndarray]) -> None:
         pass
 
     def case_scores(self, x: np.ndarray, mask: np.ndarray) -> np.ndarray:
@@ -36,7 +36,7 @@ class Prior:
         self.n = len(net.leak_pipe_ids)
         self.counts: np.ndarray | None = None
 
-    def fit(self, train: pd.DataFrame) -> None:
+    def fit(self, train: pd.DataFrame, windows: list[np.ndarray]) -> None:
         self.counts = np.bincount(train["y"].to_numpy(), minlength=self.n) + 1.0
 
     def case_scores(self, x: np.ndarray, mask: np.ndarray) -> np.ndarray:
@@ -65,7 +65,7 @@ class MaxDH:
         self.d = np.minimum(H[np.ix_(sensors, u)], H[np.ix_(sensors, v)])
         self.n = len(net.leak_pipe_ids)
 
-    def fit(self, train: pd.DataFrame) -> None:
+    def fit(self, train: pd.DataFrame, windows: list[np.ndarray]) -> None:
         pass
 
     def case_scores(self, x: np.ndarray, mask: np.ndarray) -> np.ndarray:
@@ -111,7 +111,7 @@ class SigMatch:
         self.n = S.shape[1]
         self.name = "sigmatch" if levels == "mid" else "sigmatch_all"
 
-    def fit(self, train: pd.DataFrame) -> None:
+    def fit(self, train: pd.DataFrame, windows: list[np.ndarray]) -> None:
         pass
 
     def case_scores(self, x: np.ndarray, mask: np.ndarray) -> np.ndarray:

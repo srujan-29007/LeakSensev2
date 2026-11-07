@@ -178,6 +178,50 @@ def test_chance_through_harness():
     assert len(preds) == 2 * 9
 
 
+class _Counting:
+    """Scores class = round(sum of sensed ΔH); counts fits and records what fit saw."""
+
+    name = "counting"
+
+    def __init__(self) -> None:
+        self.fits, self.seen = 0, []
+
+    def fit(self, train, windows) -> None:
+        assert len(train) == len(windows)
+        self.fits += 1
+        self.seen.append(set(train["fold"]))
+
+    def case_scores(self, x, mask):
+        s = np.zeros(4)
+        s[int(round(abs(x.sum()))) % 4] = 1.0
+        return s
+
+
+def test_fit_once_per_fold():
+    es = _toy_set()
+    m = _Counting()
+    evaluate(m, es, ks=(1, 2, 4), draws=3, n_boot=10)
+    assert m.fits == 3  # 3 folds, not 3 folds x 3 ks
+    assert all(len(seen) == 2 for seen in m.seen)  # never its own fold
+
+
+def test_batch_scores_match_case_scores():
+    rng = np.random.default_rng(0)
+    es = _toy_set()
+    es.windows = [rng.normal(size=(2, 4)) * 3 for _ in range(9)]
+
+    class Batched(_Counting):
+        def batch_scores(self, xs, mask):
+            self.batched = True
+            assert all((x[:, ~mask] == 0).all() for x in xs)  # harness zeroed unsensed
+            return np.stack([self.case_scores(x, mask) for x in xs])
+
+    a, b = _Counting(), Batched()
+    ra, _ = evaluate(a, es, ks=(2, 4), draws=4, n_boot=10)
+    rb, _ = evaluate(b, es, ks=(2, 4), draws=4, n_boot=10)
+    assert b.batched and ra == rb
+
+
 def test_random_masks():
     m = random_masks(31, 4, 20, seed=0)
     assert m.shape == (20, 31) and (m.sum(axis=1) == 4).all()

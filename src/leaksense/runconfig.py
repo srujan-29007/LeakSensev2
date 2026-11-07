@@ -42,14 +42,19 @@ class RunConfig:
     n_scenarios: int | None = None  # random subset of case scenarios; None = all
     include_scenarios: tuple[int, ...] = ()  # always in the subset
     features: FeatureConfig = field(default_factory=FeatureConfig)
+    model: dict = field(default_factory=dict)  # model settings (M8+); not part of the hash
 
     def to_dict(self) -> dict:
         return asdict(self)
 
     def hash(self) -> str:
-        """Short hash of the feature-relevant settings (names the feature folder)."""
+        """Short hash of the feature-relevant settings (names the feature folder).
+
+        ``name`` and ``model`` are left out, so model configs share the feature cache.
+        """
         d = self.to_dict()
         d.pop("name")
+        d.pop("model")
         return hashlib.sha256(json.dumps(d, sort_keys=True).encode()).hexdigest()[:12]
 
     def select_scenarios(self, available: list[int]) -> list[int]:
@@ -75,6 +80,8 @@ def _build(cls, d: dict):
 def load_run_config(path: str | Path) -> RunConfig:
     raw = yaml.safe_load(Path(path).read_text()) or {}
     feats = _build(FeatureConfig, raw.pop("features", {}) or {})
+    if "model" in raw:
+        raw["model"] = dict(raw["model"] or {})
     if "include_scenarios" in raw:
         raw["include_scenarios"] = tuple(raw["include_scenarios"])
     return _build(RunConfig, {**raw, "features": feats})

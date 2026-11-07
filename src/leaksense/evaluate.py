@@ -2,7 +2,7 @@
 
 - Cases: the 5 CV folds pooled. Locked-test scenarios are dropped and asserted absent.
 - Each case is scored by a model fitted without its own fold (``Model.fit`` sees the other
-  CV folds only).
+  CV folds only). The model is fitted once per fold and then scored at every k and mask draw.
 - Models return one score per leak-eligible pipe (``Network.leak_pipe_ids``); higher is better.
   The harness zeroes unsensed junctions before calling the model, so masked ΔH cannot leak in.
 - Ties are scored exactly: the expected value under random tie-breaking.
@@ -28,9 +28,15 @@ METRICS = ("top1", "top3", "top5", "hop_mean", "hop_median", "dist_m_mean", "dis
 
 
 class Model(Protocol):
+    """``fit`` gets the training cases and, aligned with them, each case's (n_windows x 31) ΔH.
+
+    A model may also define ``batch_scores(xs, mask) -> (n_cases, 33)`` to score many cases
+    under one mask in a single call; the harness uses it when present.
+    """
+
     name: str
 
-    def fit(self, train: pd.DataFrame) -> None: ...
+    def fit(self, train: pd.DataFrame, windows: list[np.ndarray]) -> None: ...
 
     def case_scores(self, x: np.ndarray, mask: np.ndarray) -> np.ndarray: ...
 
@@ -42,15 +48,28 @@ class LockedFoldError(AssertionError):
 # ----------------------------------------------------------------------------- distances
 
 
+def _pipe_ends(net: Network) -> dict[str, tuple[int, int, float]]:
+    """pipe id -> (u, v, nominal length m), cached on the network object."""
+    cached = getattr(net, "_pipe_ends_cache", None)
+    if cached is None:
+        t = net.pipes
+        cached = {
+            str(i): (int(u), int(v), float(ln))
+            for i, u, v, ln in zip(t["id"], t["u"], t["v"], t["length_m"], strict=True)
+        }
+        object.__setattr__(net, "_pipe_ends_cache", cached)  # Network is a frozen dataclass
+    return cached
+
+
 def point_distance(net: Network, pipe_a: str, frac_a: float, pipe_b: str, frac_b: float) -> float:
     """Shortest distance in metres along pipes between two points on pipes.
 
     A point is (pipe id, fraction from the pipe's start node). Nominal lengths only (D10).
     """
-    p = net.pipes.set_index("id")
+    p = _pipe_ends(net)
     D = net.node_dist_m
-    ua, va, la = int(p.at[pipe_a, "u"]), int(p.at[pipe_a, "v"]), float(p.at[pipe_a, "length_m"])
-    ub, vb, lb = int(p.at[pipe_b, "u"]), int(p.at[pipe_b, "v"]), float(p.at[pipe_b, "length_m"])
+    ua, va, la = p[pipe_a]
+    ub, vb, lb = p[pipe_b]
     ends_a = ((ua, frac_a * la), (va, (1 - frac_a) * la))
     ends_b = ((ub, frac_b * lb), (vb, (1 - frac_b) * lb))
     best = min(oa + D[ea, eb] + ob for ea, oa in ends_a for eb, ob in ends_b)
@@ -141,24 +160,41 @@ def random_masks(n_sensors: int, k: int, draws: int, seed: int) -> np.ndarray:
     return masks
 
 
-def predict(model: Model, es: EvalSet, masks: np.ndarray) -> np.ndarray:
-    """Per-case metric arrays averaged over masks -> (n_cases, 5): top1, top3, top5, hop, dist.
+def _score(model: Model, xs: list[np.ndarray], mask: np.ndarray) -> np.ndarray:
+    """Scores (n_cases, 33) for cases ``xs`` under one mask; unsensed junctions are zeroed."""
+    xs = [x * mask for x in xs]  # the harness zeroes unsensed junctions, so masked ΔH can't leak in
+    batch = getattr(model, "batch_scores", None)
+    if batch is not None:
+        return np.asarray(batch(xs, mask), dtype=float)
+    return np.stack([np.asarray(model.case_scores(x, mask), dtype=float) for x in xs])
 
-    Also returns per-draw case means for the draw spread.
+
+def predict_all(model: Model, es: EvalSet, masks_by_k: dict) -> dict:
+    """Fit once per fold, then score every k's masks -> {k: (n_draws, n_cases, 5)}.
+
+    The 5 columns are top1, top3, top5, hop, dist (per case and mask draw).
     """
     n = len(es.cases)
-    per = np.zeros((len(masks), n, 5))
+    out = {k: np.zeros((len(m), n, 5)) for k, m in masks_by_k.items()}
     folds = es.cases["fold"].to_numpy()
+    ys = es.cases["y"].to_numpy()
     for f in np.unique(folds):
-        model.fit(es.cases[folds != f])
-        for i in np.flatnonzero(folds == f):
-            y = int(es.cases.at[i, "y"])
+        tr = np.flatnonzero(folds != f)
+        model.fit(es.cases.iloc[tr].reset_index(drop=True), [es.windows[i] for i in tr])
+        idx = np.flatnonzero(folds == f)
+        xs = [es.windows[i] for i in idx]
+        for k, masks in masks_by_k.items():
             for d, m in enumerate(masks):
-                x = es.windows[i] * m  # unsensed junctions are zeroed by the harness
-                sc = model.case_scores(x, m)
-                cm = case_metrics(sc, y, es.dist_to_leak[i], es.class_hops)
-                per[d, i] = [cm["top1"], cm["top3"], cm["top5"], cm["hop"], cm["dist_m"]]
-    return per
+                sc = _score(model, xs, m)
+                for row, i in enumerate(idx):
+                    cm = case_metrics(sc[row], int(ys[i]), es.dist_to_leak[i], es.class_hops)
+                    out[k][d, i] = [cm["top1"], cm["top3"], cm["top5"], cm["hop"], cm["dist_m"]]
+    return out
+
+
+def predict(model: Model, es: EvalSet, masks: np.ndarray) -> np.ndarray:
+    """One mask set -> (n_draws, n_cases, 5); see ``predict_all``."""
+    return predict_all(model, es, {0: masks})[0]
 
 
 def summarise(values: np.ndarray) -> dict:
@@ -227,9 +263,10 @@ def evaluate(
     scen = es.cases["scenario_id"].to_numpy()
     grp = groups(es)
     results, pred_rows = {}, []
+    masks_by_k = {k: random_masks(n_sensors, k, draws, seed) for k in ks}
+    per_by_k = predict_all(model, es, masks_by_k)
     for k in ks:
-        masks = random_masks(n_sensors, k, draws, seed)
-        per = predict(model, es, masks)
+        masks, per = masks_by_k[k], per_by_k[k]
         avg = per.mean(axis=0)
         res = {"n_draws": len(masks), "groups": {}}
         for g, sel in grp.items():

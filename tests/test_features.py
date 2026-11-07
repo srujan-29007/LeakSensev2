@@ -227,6 +227,10 @@ def test_run_config(tmp_path):
     sel = cfg.select_scenarios(list(range(2, 20)))
     assert 7 in sel and len(sel) == 3 and sel == cfg.select_scenarios(list(range(2, 20)))
     assert cfg.hash() != RunConfig().hash()
+    f.write_text(f.read_text() + "model:\n  kind: mlp\n  hidden: 256\n")
+    cfg_m = load_run_config(f)
+    assert cfg_m.model == {"kind": "mlp", "hidden": 256}
+    assert cfg_m.hash() == cfg.hash()  # model settings share the feature cache
     f.write_text("features:\n  windwo: 3\n")
     with pytest.raises(ValueError, match="unknown"):
         load_run_config(f)

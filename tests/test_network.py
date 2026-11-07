@@ -50,6 +50,8 @@ def test_synthetic_nominal_graph(synthetic):
     assert net.node_dist_m[idx["2"], idx["4"]] == pytest.approx(1800.0)  # 2-3-4, not 2-5-4
     assert net.node_dist_m[idx["1"], idx["5"]] == pytest.approx(1300.0)
     assert np.allclose(net.node_dist_m, net.node_dist_m.T)
+    assert net.node_hops[idx["1"], idx["4"]] == 3  # 1-2-3-4 (or 1-2-5-4)
+    assert net.node_hops[idx["2"], idx["2"]] == 0
 
     # Line-graph hops: pipe 1 (1-2) touches pipes 2 and 5; pipe 3 (3-4) is two hops away.
     pi = net.pipe_index

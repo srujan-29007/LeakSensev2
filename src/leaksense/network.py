@@ -65,6 +65,7 @@ class Network:
     - ``edge_attr`` (2P, 4): ``EDGE_FEATURES`` for each directed edge.
     - ``pipe_hops`` (P, P): hop distance on the pipe line-graph (adjacent pipes = 1).
     - ``node_dist_m`` (N, N): shortest path along pipes, weighted by nominal length.
+    - ``node_hops`` (N, N): unweighted hop count between nodes (inf if disconnected).
     """
 
     nodes: pd.DataFrame
@@ -73,6 +74,7 @@ class Network:
     edge_attr: np.ndarray
     pipe_hops: np.ndarray
     node_dist_m: np.ndarray
+    node_hops: np.ndarray
 
     @property
     def node_ids(self) -> list[str]:
@@ -200,6 +202,7 @@ def build_network(net: InpNetwork, contract: DataContract | None = None) -> Netw
     for a, b, length in zip(u, v, pipes["length_m"], strict=True):
         w[a, b] = w[b, a] = min(w[a, b], length)
     node_dist = _all_pairs_shortest(w)
+    node_hops = _all_pairs_shortest(np.where(np.isfinite(w), 1.0, np.inf))
 
     ends = np.stack([u, v], axis=1)
     share = (ends[:, None, :, None] == ends[None, :, None, :]).any(axis=(2, 3))
@@ -208,7 +211,7 @@ def build_network(net: InpNetwork, contract: DataContract | None = None) -> Netw
     if np.isfinite(hops).all():
         hops = hops.astype(np.int64)
 
-    return Network(nodes, pipes, edge_index, edge_attr, hops, node_dist)
+    return Network(nodes, pipes, edge_index, edge_attr, hops, node_dist, node_hops)
 
 
 def load_nominal_network(

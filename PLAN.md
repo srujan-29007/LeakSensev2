@@ -135,7 +135,7 @@ notebooks/kaggle_run.ipynb     # calls the CLI only, no logic
   - a printed balance of pipe, leak type and case kind
 - **Verified:** 70 test scenarios (14.3%) and folds of 84/84/83/84/84 cases. The worst fold is 3.8 points off on the small-leak and solo shares (best of 50 seeds). Pipe 2 (4 cases) is the only rare pipe: it has 0 test cases and is in 4 of the 5 folds. 5/5 split tests pass.
 
-### M6: Evaluation harness and non-learned rungs
+### M6: Evaluation harness and non-learned rungs — DONE
 - Aggregate predictions to case level.
 - **Metrics:**
   - top-1/3/5 accuracy
@@ -160,6 +160,20 @@ notebooks/kaggle_run.ipynb     # calls the CLI only, no logic
   - `uv run leaksense eval --model chance` gives top-1 ≈ 1/33.
   - `uv run leaksense eval --model maxdh --k 31` writes `reports/maxdh.json`, including every breakdown.
   - `uv run pytest tests/test_metrics.py` checks hand-computed examples, including network distance with a leak at a split fraction on a toy graph.
+- **Verified** (419 CV cases; the test fold is excluded and asserted absent):
+  - **chance:** exactly 3.0 / 9.1 / 15.2% top-1/3/5 at every k.
+  - **prior:** 5.5 / 14.6 / 23.4%.
+  - **`maxdh`:**
+
+    | k | top-1 | top-3 | small-leak top-3 | median distance |
+    |---|---|---|---|---|
+    | 8 | 16.0% | 43.1% | 43.1% | 2,314 m |
+    | 31 | 33.7% | 88.8% [85.9, 91.9] | 81.7% | 759 m |
+
+    `reports/maxdh.json` has all six breakdown families.
+  - **Large leaks:** in the highest leak-flow tercile, `maxdh` top-1 falls to 22.9% while top-3 is 95%. A big leak depresses many junctions, and the largest drop is often at a downstream dead end rather than next to the leak.
+  - **Lag check:** `max_lag_days` 14 vs 7 makes no measurable difference, so it stays at 7.
+  - 13 metric tests pass, plus a real-data test.
 
 ### M7: Sensitivity matrix (physics input)
 - On the nominal network, simulate one leak per eligible pipe (33 pipes).

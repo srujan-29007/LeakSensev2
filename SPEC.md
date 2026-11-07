@@ -1,6 +1,6 @@
 # LeakSense: Specification
 
-- **Status:** M0–M5 are done (M5 ran before M4's measurements). The data contract is verified and enforced by `leaksense validate-data` (see `reports/data_inventory.md`).
+- **Status:** M0–M6 are done (M5 ran before M4's measurements). The data contract is verified and enforced by `leaksense validate-data` (see `reports/data_inventory.md`).
 - **Last updated:** 2026-11-08
 
 ## 1. Problem
@@ -119,7 +119,7 @@ A single leak has already been detected on the Hanoi water network (LeakDB). Pre
 - **ΔH.** Pressure minus a leak-free baseline taken from the same scenario.
   - **Slot matching** was chosen in M4 by measurement on leak-free pseudo-cases from Scenario-1 and the 419 non-test scenarios (`reports/baseline_choice.md`). **Time of day × weekday**, using the per-slot **mean** of the **14 leak-free days nearest the case**, had the lowest window noise: 0.149 m, against 0.202 m for time of day only and 0.263 m for weekday with all history. It was also best for cases with only 14–28 days of history.
   - **Window:** 48 steps (24 h), stride 24, as a mean over the window. The leak-free noise is 0.98 m per step and 0.149 m per 24-h window.
-  - **Drift:** baseline error grows with the distance from the baseline. With 24-h windows the median |bias| is 0.09 m in the first week, 0.16 m in the second and about 0.45 m after 3 months. So **samples are taken only within 7 days of the baseline**: the start of the case for pre baselines, the end for post, both ends for combined.
+  - **Drift:** baseline error grows with the distance from the baseline. With 24-h windows the median |bias| is 0.09 m in the first week, 0.16 m in the second and about 0.45 m after 3 months. So **samples are taken only within 7 days of the baseline**: the start of the case for pre baselines, the end for post, both ends for combined. A 14-day limit was checked in M6 with `maxdh` and changed nothing measurable: small-leak top-3 at k = 31 was 82.6% vs 81.7%, and at k = 8 42.6% vs 43.1%, with overlapping CIs (`reports/maxdh_lag14.json` vs `reports/maxdh.json`). So 7 days stays.
   - **Leak Start:** out of sample, ΔH at start−4 … start−1 is at noise level (median 0.43–0.60 m mean |ΔH| over big-leak cases) and jumps at start (7.9 m). So no guard step is needed.
   - **Baseline window.** It needs at least 14 leak-free days. Take the first option that qualifies:
     1. the pre-leak period, preferring the most recent days
@@ -140,6 +140,9 @@ A single leak has already been detected on the Hanoi water network (LeakDB). Pre
 
 How every metric is reported:
 - Mean ± 95% bootstrap CI over cases, resampled by scenario and pooled across the 5 outer CV folds.
+- **Ties are scored exactly.** If the true pipe shares its score with others, top-k is the expected value under random tie-breaking: clip((k − n_better) / n_tied, 0, 1). Distances for a tied top-1 are averaged over the tied set. So the chance rung scores exactly k/33.
+- **Budgets k < 31 before placement exists (M6–M10):** each k is scored over 20 seeded random sensor sets, and the same sets are used for every rung. Per-case metrics are averaged over the sets, and the spread across sets (p5 / p50 / p95) is reported. From M11 on, greedy and heuristic placements are scored too.
+- **Tercile edges** (leak flow, SNR) are computed once on the evaluated case set and recorded in each report, so every rung uses the same groups.
 - Broken down four ways: **overall**, **by leak type** (small / big), **by case kind** (pure / solo), and **by baseline kind** (pre vs post/combined). A post baseline uses data from after the leak, which an operator would not have in real time, so headline numbers are also shown for pre-baseline cases only.
 - The locked test fold is evaluated exactly once, in M13.
 

@@ -62,8 +62,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     from leaksense.eval_cmds import add_parsers as add_eval
     from leaksense.feature_cmds import add_parsers
+    from leaksense.sens_cmds import add_parsers as add_sens
 
     add_parsers(sub)
+    add_sens(sub)
     add_eval(sub)
     return parser
 

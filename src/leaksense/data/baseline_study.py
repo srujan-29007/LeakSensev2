@@ -20,6 +20,7 @@ import pandas as pd
 from leaksense.data.features import (
     STEPS_PER_DAY,
     PressureCache,
+    baseline_rows,
     case_delta_h,
     case_windows,
     slot_index,
@@ -220,8 +221,16 @@ def choose_lag(lag: pd.DataFrame, method_label: str) -> float | None:
     return d
 
 
+START_CHECK_GUARD = 4  # baseline ends at start-5, so start-4..start-1 are out of sample
+
+
 def start_check(cases: pd.DataFrame, cache: PressureCache, cfg: FeatureConfig) -> dict:
-    """Mean |ΔH| over junctions at start-1, start and start+1 for big pure cases (pre baseline)."""
+    """Mean |ΔH| over junctions around Leak Start, for big pure cases with a pre baseline.
+
+    The baseline stops ``START_CHECK_GUARD`` steps before start, so the steps start-4..start-1
+    are evaluated out of sample, exactly like the case rows. If the leak signal began before
+    Leak Start, start-1 would stand out from start-4..start-2.
+    """
     c = cache.contract
     slots_tod, slots_wd = slot_index(c, "tod"), slot_index(c, "tod_weekday")
     sel = cases[
@@ -229,22 +238,25 @@ def start_check(cases: pd.DataFrame, cache: PressureCache, cfg: FeatureConfig) -
         & (cases["leak_type"] == "big")
         & (cases["baseline_kind"] == "pre")
     ]
-    vals = {"start-2": [], "start-1": [], "start": [], "start+1": []}
+    g = START_CHECK_GUARD
+    keys = [f"start{k:+d}" if k else "start" for k in range(-g, 2)]
+    vals: dict[str, list[float]] = {k: [] for k in keys}
+    slots = slots_tod if cfg.slot == "tod" else slots_wd
     for _, case in sel.iterrows():
-        sid = int(case["scenario_id"])
+        sid, s = int(case["scenario_id"]), int(case["start"])
+        if int(case["n_steps"]) < 2:
+            continue
         p, labels = cache.get(sid), cache.labels(sid)
-        cd = case_delta_h(p, case, cfg, labels, slots_tod, slots_wd)
-        # ΔH before start from the same profile: rebuild the profile from B only, evaluate at s-1.
-        prof, _ = slot_profile(
-            p[cd.rows_b], cd.rows_b, cfg.slot, cfg.estimator, slots_tod, slots_wd
-        )
-        slots = slots_tod if cfg.slot == "tod" else slots_wd
-        s = int(case["start"])
-        for key, t in (("start-2", s - 2), ("start-1", s - 1)):
+        rows_b = baseline_rows(case, cfg.baseline_days, g, labels)
+        prof, _ = slot_profile(p[rows_b], rows_b, cfg.slot, cfg.estimator, slots_tod, slots_wd)
+        for key, k in zip(keys, range(-g, 2), strict=True):
+            t = s + k
             vals[key].append(float(np.abs(p[t] - prof[slots[t]]).mean()))
-        vals["start"].append(float(np.abs(cd.dh[0]).mean()))
-        vals["start+1"].append(float(np.abs(cd.dh[min(1, len(cd.dh) - 1)]).mean()))
-    return {"n_cases": len(sel), **{k: float(np.median(v)) if v else None for k, v in vals.items()}}
+    return {
+        "n_cases": len(sel),
+        "baseline_ends_at": f"start-{g + 1}",
+        **{k: float(np.median(v)) if v else None for k, v in vals.items()},
+    }
 
 
 def signal_check(

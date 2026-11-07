@@ -194,7 +194,8 @@ def _render_md(report, comp, lag, signal, feat, cfg_name) -> str:
         "",
         "## Check: no leak signal before Leak Start",
         "",
-        "Median over big-leak pure cases (pre baseline) of mean |ΔH| over junctions, in m:",
+        "Median over big-leak pure cases (pre baseline) of mean |ΔH| over junctions, in m. The "
+        "baseline here ends at start-5, so every column is out of sample:",
         "",
         "| " + " | ".join(report["start_check"]) + " |",
         "|" + "---|" * len(report["start_check"]),

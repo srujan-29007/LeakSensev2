@@ -246,7 +246,7 @@ notebooks/kaggle_run.ipynb     # calls the CLI only, no logic
 
   - **Reading:** with about 335 training cases for 33 classes, neither tabular model gets close to `sigmatch_all` at small k: with few sensors, a physics signature beats what 335 cases can teach. With all 31 sensors the GBM has the best top-1 (69.7 vs 64.0; the CIs overlap). Its largest gains are on the biggest leaks (top leak-flow tercile, k = 31 top-1 83.6 vs 73.6). The MLP is better than the GBM at small k and worse at k = 31. That gap is the case for M10's S-based prior.
 
-### M9: Masked GAT
+### M9: Masked GAT — DONE
 - 4 GATv2 layers encode the nodes.
 - The reservoir stays in the graph with features [0, 0] and mask 0. *(data: D5, its pressure is always 0)*
 - Pipe head: the two endpoint embeddings plus the nominal edge features give 33 logits. Pipe 1 is excluded.
@@ -257,6 +257,28 @@ notebooks/kaggle_run.ipynb     # calls the CLI only, no logic
     - changing a masked node's ΔH does not change the output
     - the model overfits a set of 5 cases
   - `uv run leaksense train --config configs/gat_cpu.yaml --fold 0` runs as a smoke test.
+- **Built:** `models/gat.py` reuses the M8 protocol: `MaskedGAT` subclasses `MaskedMLP` and only swaps the network. The MLP's training loop now takes a network factory; MLP scores stayed bit-identical.
+  - Node input `[T(ΔH·m), m]`, with an 8-d learned embedding per node (positional on the fixed nominal graph). The `scale_magnitude` magnitude goes to the pipe head as a global input.
+  - Edge features: log of nominal length, diameter, roughness and resistance, z-scored over the pipes.
+  - Pipe head: an MLP on `[h_u + h_v, |h_u − h_v|, edge features, magnitude]`, symmetric in u and v.
+  - `gat_cpu.yaml` fixes `transform: scale_magnitude` (M8 chose it in every fold for both models) instead of running a grid.
+- **Verified** (419 CV cases, commit `ffb1115`):
+  - 10 tests in `tests/test_gat.py` pass: shapes, masked-junction invariance for every transform, reservoir input is always zero, overfits 5 cases, deterministic, CLI.
+  - The fold-0 smoke run took 794 s. The full 5-fold `train --config configs/gat_cpu.yaml` took 3,661 s on a laptop CPU, about 6× the MLP's 590 s. Early stopping chose 56–85 epochs.
+  - **Results** (%, [95% CI]):
+
+    | rung | k = 8 top-3 | k = 8 small-leak top-3 | k = 31 top-1 | k = 31 top-3 | k = 31 small-leak top-3 |
+    |---|---|---|---|---|---|
+    | `sigmatch_all` | **78.4** [75.7, 81.2] | **68.5** | 64.0 [59.4, 68.5] | 91.2 | 83.5 [78.4, 88.1] |
+    | `mlp` | 63.3 [60.2, 66.3] | 53.2 | 53.7 [48.9, 58.5] | 88.5 | 80.3 |
+    | `gbm` | 58.9 [56.1, 61.7] | 51.0 | 69.7 [65.2, 74.2] | 90.0 | 82.1 [77.1, 86.7] |
+    | `gat` | 63.0 [60.8, 65.3] | 57.0 [53.5, 60.2] | **75.4** [70.9, 79.5] | **96.4** [94.5, 98.1] | **93.6** [90.4, 96.8] |
+
+  - **Reading:**
+    - **All 31 sensors:** the GAT is the best rung so far. Small-leak top-3 is 93.6 vs 83.5 for `sigmatch_all`, and the CIs do not overlap. Median distance is 316 m (vs 379 for `gbm`, 432 for `sigmatch_all`).
+    - **Top-1 at k = 31:** the GAT's 75.4 beats the GBM's 69.7, but the CIs overlap.
+    - **Biggest leaks:** in the top leak-flow tercile, top-1 is about the same as the GBM (82.1 vs 83.6).
+    - **At k = 8:** the GAT is no better than the MLP overall (63.0 vs 63.3). It is a few points better on small leaks (57.0 vs 53.2), and it is still far below `sigmatch_all` (78.4). Topology alone does not make up for few sensors. The S prior in M10 is aimed at this gap.
 
 ### M10: Physics-input GAT and ablation
 - Add the S-based prior three ways: as node features, as edge features, and as a per-pipe prior logit. Use all three demand levels (M7: cross-level cosine 0.978 < 0.99, and `sigmatch_all` ≥ `sigmatch`), and ablate mid-only vs all levels.

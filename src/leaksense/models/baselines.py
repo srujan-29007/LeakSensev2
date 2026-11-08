@@ -83,6 +83,25 @@ class MaxDH:
         return -rank
 
 
+def signatures(net: Network, sensitivity: dict, levels: str = "all") -> np.ndarray:
+    """S as (31 junctions x 33 pipes x variants): every (size, level) column is a signature.
+
+    ``levels="mid"`` keeps the median demand level only (2 variants), ``"all"`` keeps all (6).
+    Checks that S's junctions and pipes are the network's sensors and leak-eligible pipes.
+    """
+    if list(sensitivity["pipes"]) != net.leak_pipe_ids:
+        raise ValueError("sensitivity pipes do not match the network's leak-eligible pipes")
+    if list(sensitivity["junctions"]) != net.sensor_ids:
+        raise ValueError("sensitivity junctions do not match the network's sensors")
+    S = np.asarray(sensitivity["S"], dtype=float)
+    lv = list(sensitivity["levels"])
+    if levels == "mid":
+        S = S[..., [lv.index("mid")]]
+    elif levels != "all":
+        raise ValueError(f"levels must be 'mid' or 'all', not {levels!r}")
+    return S.reshape(S.shape[0], S.shape[1], -1)
+
+
 class SigMatch:
     """Cosine between the case-mean ΔH and each pipe's sensitivity column, on sensed junctions.
 
@@ -96,18 +115,8 @@ class SigMatch:
     def __init__(self, net: Network, sensitivity: dict | None = None, levels: str = "mid") -> None:
         if sensitivity is None:
             raise ValueError("sigmatch needs the sensitivity matrix (leaksense build-sensitivity)")
-        if list(sensitivity["pipes"]) != net.leak_pipe_ids:
-            raise ValueError("sensitivity pipes do not match the network's leak-eligible pipes")
-        if list(sensitivity["junctions"]) != net.sensor_ids:
-            raise ValueError("sensitivity junctions do not match the network's sensors")
-        S = np.asarray(sensitivity["S"], dtype=float)
-        lv = list(sensitivity["levels"])
-        if levels == "mid":
-            S = S[..., [lv.index("mid")]]
-        elif levels != "all":
-            raise ValueError(f"levels must be 'mid' or 'all', not {levels!r}")
-        # (31 x 33 x n_variants): every (size, level) column is a candidate signature
-        self.S = S.reshape(S.shape[0], S.shape[1], -1)
+        S = signatures(net, sensitivity, levels)
+        self.S = S
         self.n = S.shape[1]
         self.name = "sigmatch" if levels == "mid" else "sigmatch_all"
 

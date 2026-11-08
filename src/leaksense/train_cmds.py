@@ -10,7 +10,7 @@ import argparse
 import time
 
 from leaksense.config import ConfigError
-from leaksense.eval_cmds import EXIT_OK, add_common, load_inputs, run_and_report
+from leaksense.eval_cmds import EXIT_OK, add_common, load_inputs, load_sensitivity, run_and_report
 
 
 def learned_models() -> dict:
@@ -19,6 +19,15 @@ def learned_models() -> dict:
     from leaksense.models.mlp import MaskedMLP
 
     return {"mlp": MaskedMLP, "gbm": MaskedGBM, "gat": MaskedGAT}
+
+
+def make_model(inp, model_cfg: dict):
+    """The learned model for ``model_cfg``; loads S only for a GAT with physics inputs."""
+    cls = learned_models()[model_cfg.get("kind")]
+    wants = getattr(cls, "wants_sensitivity", None)
+    if wants is not None and wants(model_cfg):
+        return cls(inp.net, model_cfg, sensitivity=load_sensitivity(inp))
+    return cls(inp.net, model_cfg)
 
 
 def add_parsers(sub) -> None:
@@ -37,7 +46,7 @@ def cmd_train(args: argparse.Namespace) -> int:
     models = learned_models()
     if kind not in models:
         raise ConfigError(f"config model.kind must be one of {sorted(models)}, not {kind!r}")
-    model = models[kind](inp.net, inp.cfg.model)
+    model = make_model(inp, inp.cfg.model)
     all_folds = sorted(int(f) for f in inp.es.cases["fold"].unique())
     folds = None
     if args.fold is not None:

@@ -5,8 +5,14 @@ import pandas as pd
 import pytest
 import torch
 
-from leaksense.models.gat import GATConfig, MaskedGAT, build_graph, standardised_pipe_features
-from leaksense.models.mlp import encode, parse_config, random_k_masks
+from leaksense.models.gat import (
+    GATConfig,
+    MaskedGAT,
+    build_graph,
+    masked_cosine,
+    standardised_pipe_features,
+)
+from leaksense.models.mlp import encode, parse_config, random_k_masks, split_encoded
 from leaksense.network import load_nominal_network
 
 
@@ -30,9 +36,23 @@ def _cases(net, ys, n_windows=6, noise=0.05, seed=0):
     return cases, windows
 
 
+def toy_sensitivity(net, seed=7):
+    """S-like dict for the synthetic net: (junctions x pipes x 2 sizes x 3 levels), all <= 0."""
+    j, c = len(net.sensor_ids), len(net.leak_pipe_ids)
+    S = -np.abs(np.random.default_rng(seed).normal(1, 0.5, (j, c, 2, 3)))
+    return {
+        "S": S,
+        "pipes": np.array(net.leak_pipe_ids),
+        "junctions": np.array(net.sensor_ids),
+        "levels": np.array(["low", "mid", "high"]),
+    }
+
+
 def _gat(net, **kw):
     small = {"hidden": 16, "heads": 2, "layers": 2, "node_embed": 4, "val_frac": 0.0}
-    return MaskedGAT(net, {**small, "num_threads": 1, **kw})
+    cfg = {**small, "num_threads": 1, **kw}
+    sens = toy_sensitivity(net) if MaskedGAT.wants_sensitivity(cfg) else None
+    return MaskedGAT(net, cfg, sensitivity=sens)
 
 
 def test_graph_tensors(net):
@@ -56,10 +76,27 @@ def test_output_shapes(net):
     assert np.allclose(s, single, atol=1e-5)
 
 
-@pytest.mark.parametrize("transform", ["scale_magnitude", "signed_log1p", "none"])
-def test_masked_junction_cannot_change_output(net, transform):
+# every M10 variant: (overrides, needs S)
+VARIANTS = {
+    "gat": {},
+    "gat_noembed": {"node_embed": 0},
+    "gat_snode": {"physics": "node"},
+    "gat_sedge": {"physics": "edge"},
+    "gat_sprior": {"physics": "prior"},
+    "gat_sprior_mid": {"physics": "prior", "s_levels": "mid"},
+}
+MASK_CASES = [
+    (v, t)
+    for v in VARIANTS
+    for t in ("scale_magnitude", "none", "signed_log1p")
+    if not (t == "signed_log1p" and VARIANTS[v].get("physics"))
+]
+
+
+@pytest.mark.parametrize(("variant", "transform"), MASK_CASES)
+def test_masked_junction_cannot_change_output(net, variant, transform):
     cases, windows = _cases(net, [0, 1, 2, 3])
-    m = _gat(net, max_epochs=3, transform=transform)
+    m = _gat(net, max_epochs=3, transform=transform, **VARIANTS[variant])
     m.fit(cases, windows)
     mask = np.array([True, False, True, False])
     x = windows[0].copy()
@@ -159,3 +196,98 @@ def test_cli_train_gat(cli_env):
     r = json.loads((rep / "gat_fold1.json").read_text())
     assert r["model"] == "gat" and r["training"]["eval_folds"] == [1]
     assert r["training"]["base"]["heads"] == 2
+
+
+# ----------------------------------------------------------------------------- physics (M10)
+
+
+def test_masked_cosine_ignores_unsensed_rows_of_x_and_s():
+    rng = np.random.default_rng(0)
+    x = torch.from_numpy(rng.normal(size=(3, 5))).float()
+    S = torch.from_numpy(-np.abs(rng.normal(size=(5, 4, 6)))).float()
+    mask = torch.tensor([[1, 0, 1, 1, 0], [1, 1, 1, 1, 1], [0, 0, 1, 0, 0]]).float()
+    a = masked_cosine(x, mask, S)
+    x2, S2 = x.clone(), S.clone()
+    x2[mask == 0] = 1e3
+    S2[1] = 50.0  # junction 1 is unsensed in rows 0 and 2
+    b = masked_cosine(x2, mask, S2)
+    assert torch.allclose(a[[0, 2]], b[[0, 2]])
+    assert a.shape == (3, 4, 6) and (a.abs() <= 1 + 1e-6).all()
+    assert torch.equal(masked_cosine(torch.zeros(1, 5), mask[:1], S), torch.zeros(1, 4, 6))
+
+
+@pytest.mark.parametrize("levels", ["all", "mid"])
+def test_masked_cosine_equals_sigmatch(net, levels):
+    from leaksense.models.baselines import SigMatch, signatures
+
+    sd = toy_sensitivity(net)
+    sm = SigMatch(net, sd, levels=levels)
+    S = torch.from_numpy(signatures(net, sd, levels)).float()
+    rng = np.random.default_rng(1)
+    for mask in ([True, False, True, True], [True] * 4, [False, True, False, False]):
+        mk = np.array(mask)
+        x = -np.abs(rng.normal(2, 1, size=(1, 4))) * mk
+        for t in ("scale_magnitude", "none"):
+            row = torch.from_numpy(encode(x, mk[None], t).astype(np.float32))
+            p, _, m = split_encoded(row, 4)
+            cos = masked_cosine(p, m, S)[0].amax(dim=1).numpy()
+            assert np.allclose(cos, sm.case_scores(x, mk), atol=1e-5)
+
+
+def test_prior_with_zero_head_ranks_like_sigmatch_all(net):
+    from leaksense.models.baselines import SigMatchAll
+
+    m = _gat(net, physics="prior")
+    gnet = m._make_net(m.base, 2 * 4 + 1).eval()
+    with torch.no_grad():
+        gnet.head[-1].weight.zero_()
+        gnet.head[-1].bias.zero_()
+    ref = SigMatchAll(net, toy_sensitivity(net))
+    rng = np.random.default_rng(2)
+    for _ in range(5):
+        mk = rng.random(4) < 0.7
+        mk[0] = True
+        x = -np.abs(rng.normal(2, 1, size=(1, 4))) * mk
+        with torch.no_grad():
+            lg = gnet(torch.from_numpy(encode(x, mk[None], "scale_magnitude").astype(np.float32)))
+        assert np.allclose(lg[0].numpy() / 10.0, ref.case_scores(x, mk), atol=1e-5)
+
+
+def test_physics_none_ignores_sensitivity(net):
+    cases, windows = _cases(net, [0, 1, 2, 3])
+    a = MaskedGAT(
+        net,
+        {"hidden": 16, "heads": 2, "layers": 2, "val_frac": 0.0, "max_epochs": 3, "num_threads": 1},
+    )
+    b = MaskedGAT(
+        net,
+        {"hidden": 16, "heads": 2, "layers": 2, "val_frac": 0.0, "max_epochs": 3, "num_threads": 1},
+        sensitivity=toy_sensitivity(net),
+    )
+    a.fit(cases, windows)
+    b.fit(cases, windows)
+    mask = np.array([True, False, True, True])
+    assert np.array_equal(a.batch_scores(windows, mask), b.batch_scores(windows, mask))
+    assert "physics_params" not in b.history[-1]
+
+
+@pytest.mark.parametrize("physics", ["node", "edge", "prior"])
+def test_physics_variants_train_and_record_params(net, physics):
+    cases, windows = _cases(net, [0, 1, 2, 3])
+    m = _gat(net, max_epochs=3, physics=physics)
+    m.fit(cases, windows)
+    s = m.batch_scores(windows, np.array([True, True, False, True]))
+    assert s.shape == (4, 4) and np.isfinite(s).all()
+    if physics in ("node", "prior"):
+        assert m.history[-1]["physics_params"]
+
+
+def test_physics_config_errors(net):
+    with pytest.raises(ValueError, match="scale_magnitude or none"):
+        GATConfig(physics="prior", transform="signed_log1p")
+    with pytest.raises(ValueError, match="physics"):
+        GATConfig(physics="attention")
+    with pytest.raises(ValueError, match="sensitivity"):
+        MaskedGAT(net, {"physics": "edge"})
+    assert MaskedGAT.wants_sensitivity({"physics": ["none", "prior"]})
+    assert not MaskedGAT.wants_sensitivity({"physics": "none"})

@@ -45,6 +45,9 @@ class MLPConfig:
     val_frac: float = 0.15  # share of each pipe's training scenarios held out for early stopping
     val_masks: int = 4  # fixed random masks per validation window
     refit: bool = True  # retrain on the whole training set for the chosen epoch count
+    # score the chosen inner-validation net at these budgets, e.g. "2,3,4,6,8" (M10 selection);
+    # a string, because list-valued settings are grids
+    inner_eval_ks: str = ""
     class_weight: str = "inverse"
     k_min: int = 1  # training mask size k ~ U{k_min..31}
     seed: int = 0
@@ -249,6 +252,51 @@ def _train(
 # ----------------------------------------------------------------------------- model
 
 
+def inner_scores(
+    net: nn.Module,
+    transform: str,
+    cases: pd.DataFrame,
+    windows: list[np.ndarray],
+    ks: list[int],
+    draws: int = 20,
+    seed: int = 0,
+) -> dict:
+    """Case-level top-3 of ``net`` on inner-validation cases, per k (M10 stage-2 selection).
+
+    Uses ``evaluate.random_masks`` (the same seeded sets as the harness) and its exact tie
+    scoring. Returns {k: {"top3": all cases, "small_top3": small leaks (if leak_type known)}}.
+    """
+    from leaksense.evaluate import case_metrics, random_masks
+
+    net.eval()
+    j = windows[0].shape[1]
+    lens = np.array([len(w) for w in windows])
+    starts = np.concatenate([[0], np.cumsum(lens)[:-1]])
+    x = np.concatenate(windows).astype(np.float32)
+    ys = cases["y"].to_numpy()
+    small = (cases["leak_type"] == "small").to_numpy() if "leak_type" in cases else None
+    out = {}
+    for k in ks:
+        top3 = np.zeros(len(cases))
+        masks = random_masks(j, k, draws, seed)
+        for m in masks:
+            mm = np.broadcast_to(m, x.shape)
+            with torch.no_grad():
+                xin = torch.from_numpy(encode(x, mm, transform).astype(np.float32))
+                lp = torch.log_softmax(predict_logits(net, xin), dim=1).numpy()
+            sc = np.add.reduceat(lp, starts, axis=0) / lens[:, None]
+            n_cls = sc.shape[1]
+            d, h = np.zeros(n_cls), np.zeros((n_cls, n_cls))
+            top3 += [case_metrics(sc[i], int(ys[i]), d, h)["top3"] for i in range(len(ys))]
+        top3 /= len(masks)
+        r = {"top3": round(float(top3.mean()), 4), "n": len(ys)}
+        if small is not None and small.any():
+            r["small_top3"] = round(float(top3[small].mean()), 4)
+            r["n_small"] = int(small.sum())
+        out[str(k)] = r
+    return out
+
+
 class MaskedMLP:
     """Masked MLP over ``[T(ΔH·m), m]``; see the module docstring."""
 
@@ -293,6 +341,15 @@ class MaskedMLP:
             pick = {"cfg": cand[0], "net": None, "epochs": cand[0].max_epochs, "val_loss": None}
 
         cfg = pick["cfg"]
+        inner_eval = {}
+        if cfg.inner_eval_ks and pick["net"] is not None:  # before the refit overwrites it
+            inner_eval = inner_scores(
+                pick["net"],
+                cfg.transform,
+                train.iloc[va_idx],
+                [windows[i] for i in va_idx],
+                [int(k) for k in cfg.inner_eval_ks.split(",")],
+            )
         if cfg.refit or pick["net"] is None:
             cw = class_weights(train["y"].to_numpy(), self.n, cfg.class_weight)
             full = _windows(train, windows, cw)
@@ -310,6 +367,7 @@ class MaskedMLP:
                 "chosen": {k: getattr(cfg, k) for k in self.grid},
                 "epochs": int(pick["epochs"]),
                 "val_loss": pick["val_loss"],
+                **({"inner_eval": inner_eval} if inner_eval else {}),
                 "trials": [
                     {
                         **{k: getattr(t["cfg"], k) for k in self.grid},

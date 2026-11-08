@@ -291,3 +291,20 @@ def test_physics_config_errors(net):
         MaskedGAT(net, {"physics": "edge"})
     assert MaskedGAT.wants_sensitivity({"physics": ["none", "prior"]})
     assert not MaskedGAT.wants_sensitivity({"physics": "none"})
+
+
+def test_inner_eval_scores_the_inner_validation_net(net):
+    """inner_eval_ks records top-3 per k on inner-validation cases, and changes no scores."""
+    ys = [0, 1, 2, 3] * 4
+    cases, windows = _cases(net, ys, seed=3)
+    cases["leak_type"] = ["small", "big"] * 8
+    kw = {"max_epochs": 4, "val_frac": 0.25, "patience": 2}
+    a, b = _gat(net, **kw), _gat(net, inner_eval_ks="2,4", **kw)
+    a.fit(cases, windows)
+    b.fit(cases, windows)
+    mask = np.array([True, False, True, True])
+    assert np.array_equal(a.batch_scores(windows, mask), b.batch_scores(windows, mask))
+    ie = b.history[-1]["inner_eval"]
+    assert set(ie) == {"2", "4"} and "inner_eval" not in a.history[-1]
+    assert ie["2"]["n"] == b.history[-1]["n_inner_val_cases"] > 0
+    assert 0 <= ie["2"]["top3"] <= 1 and "small_top3" in ie["4"]

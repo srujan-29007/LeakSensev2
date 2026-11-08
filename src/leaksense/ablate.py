@@ -48,8 +48,27 @@ REPORT_GROUPS = (
 )
 H2_KS = (2, 3, 4, 6)
 H1_KS = (8, 12, 16, 31)
-SELECT_K = 8  # stage-2 rule: best seed-0 small-leak top-3 at k = 8 (SPEC H5 headline)
+SELECT_K = 8
+SELECT_KS = (2, 3, 4, 6, 8)  # stage-2 selection budgets (inner validation)
 N_FINAL_PHYSICS = 2
+FIXED_FINAL = ("gat", "gat_noembed")  # always in stage 2
+PHYSICS_ORDER = ("none", "prior", "node", "edge")  # tie-break: fewer added inputs first
+ADOPT_SEEDS = (0, 1, 2)
+STAGE2_RULE = (
+    "gat and gat_noembed, plus the 2 physics variants with the highest inner-validation score: "
+    "seed-0 runs, each fold's chosen inner-validation net (before the refit) scored on that "
+    "fold's inner-validation cases with the harness's 20 seeded sensor sets; score = mean over "
+    "k in {2, 3, 4, 6, 8} of the case-weighted mean over the 5 folds of case-level top-3. "
+    "Ties (equal to 0.1 point) are broken by inner small-leak top-3 at k = 8 (to 0.1 point), "
+    "then by fewer added inputs (prior < node < edge; mid < all levels), then by name. Outer-fold "
+    "results are not used."
+)
+NOEMBED_RULE = (
+    "adopt node_embed: 0 as the default for M11 on if, with seeds 0, 1 and 2 of both gat and "
+    "gat_noembed over all 5 folds, the paired top-3 difference (gat_noembed - gat, all cases, "
+    "seed-averaged per case) has its 95% CI lower bound above 0 at k = 8 and a point estimate "
+    ">= 0 at every k; otherwise keep the embedding"
+)
 
 
 @dataclass(frozen=True)
@@ -125,8 +144,9 @@ def _key(fp: dict, what: dict) -> str:
     return hashlib.sha256(blob.encode()).hexdigest()[:16]
 
 
-def _run_name(cfg_name: str, variant: str, seed: int | None) -> str:
-    return f"{cfg_name}__{variant}" + ("" if seed is None else f"_s{seed}")
+def _run_name(cfg_name: str, variant: str, seed: int | None, fold: int | None = None) -> str:
+    name = f"{cfg_name}__{variant}" + ("" if seed is None else f"_s{seed}")
+    return name + ("" if fold is None else f"_f{fold}")
 
 
 def _is_done(runs_dir: Path, name: str, key: str) -> bool:
@@ -174,32 +194,42 @@ def run_all(args, inp, spec: AblationSpec, variants: list[str], seeds: list[int]
             print(f"{name}: done, skipped")
             continue
         res = {"sensitivity": load_sensitivity(inp)} if ref in NEEDS_SENSITIVITY else {}
-        meta = {"key": key, "kind": "reference", "variant": ref, "seed": None, "fp": fp}
+        meta = {
+            "key": key,
+            "kind": "reference",
+            "variant": ref,
+            "seed": None,
+            "fold": None,
+            "fp": fp,
+        }
         _run(args, inp, name, MODELS[ref](inp.net, **res), ref, spec.folds, meta, runs_dir)
 
+    # one run per (variant, seed, fold): each fold is saved as soon as it finishes, so an
+    # interrupted run resumes from the next fold
     for v in variants:
         for s in seeds:
             model_cfg = {**cfg.model, **spec.variants[v], "seed": s}
-            name = _run_name(cfg.name, v, s)
-            key = _key(fp, {"model": model_cfg})
-            if _is_done(runs_dir, name, key):
-                print(f"{name}: done, skipped")
-                continue
             vinp = dataclasses.replace(inp, cfg=dataclasses.replace(cfg, model=model_cfg))
-            model = make_model(vinp, model_cfg)
-            meta = {"key": key, "kind": "model", "variant": v, "seed": s, "fp": fp}
-            print(f"{name}: training {v} (seed {s}) on folds {spec.folds or 'all'}")
-            _run(
-                args,
-                vinp,
-                name,
-                model,
-                "gat",
-                spec.folds,
-                meta,
-                runs_dir,
-                training=lambda m=model: {**m.describe(), "eval_folds": eval_folds},
-            )
+            for f in eval_folds:
+                name = _run_name(cfg.name, v, s, f)
+                key = _key(fp, {"model": model_cfg, "fold": f})
+                if _is_done(runs_dir, name, key):
+                    print(f"{name}: done, skipped")
+                    continue
+                model = make_model(vinp, model_cfg)
+                meta = {"key": key, "kind": "model", "variant": v, "seed": s, "fold": f, "fp": fp}
+                print(f"{name}: training {v} (seed {s}), scoring fold {f}")
+                _run(
+                    args,
+                    vinp,
+                    name,
+                    model,
+                    "gat",
+                    [f],
+                    meta,
+                    runs_dir,
+                    training=lambda m=model, f=f: {**m.describe(), "eval_folds": [f]},
+                )
 
 
 # ----------------------------------------------------------------------------- aggregate
@@ -207,15 +237,30 @@ def run_all(args, inp, spec: AblationSpec, variants: list[str], seeds: list[int]
 
 @dataclass
 class Run:
+    """One (variant, seed): its per-fold reports merged; a reference rung is one report."""
+
     variant: str
     seed: int | None
     kind: str
-    report: dict
+    reports: list[dict]  # one per fold, in fold order (one for a reference)
     values: np.ndarray  # (n_ks, n_cases, 5), cases in the aggregator's case order
 
+    @property
+    def model(self) -> dict | None:
+        return (
+            None if self.kind == "reference" else self.reports[0]["provenance"]["config"]["model"]
+        )
 
-def load_runs(runs_dir: Path, cfg_name: str, fp: dict, case_ids: list[str], ks) -> list[Run]:
-    runs = []
+    @property
+    def fold_history(self) -> list[dict]:
+        return [h for r in self.reports for h in r.get("training", {}).get("folds", [])]
+
+
+def load_runs(
+    runs_dir: Path, cfg_name: str, fp: dict, case_ids: list[str], ks, folds: list[int]
+) -> tuple[list[Run], list[str]]:
+    """Runs for ``cfg_name`` -> (complete runs, names of incomplete (variant, seed) pairs)."""
+    parts: dict[tuple, list] = {}
     for js in sorted(Path(runs_dir).glob(f"{cfg_name}__*.json")):
         rep = json.loads(js.read_text())
         meta = rep.get("ablation")
@@ -230,16 +275,26 @@ def load_runs(runs_dir: Path, cfg_name: str, fp: dict, case_ids: list[str], ks) 
         pq = js.with_suffix(".parquet")
         if not pq.is_file():
             raise ConfigError(f"{js.name} has no predictions file {pq.name}")
-        p = pd.read_parquet(pq)
+        key = (meta["variant"], meta["seed"], meta["kind"])
+        parts.setdefault(key, []).append((meta.get("fold"), rep, pd.read_parquet(pq)))
+
+    runs, incomplete = [], []
+    for (variant, seed, kind), items in parts.items():
+        items.sort(key=lambda t: -1 if t[0] is None else t[0])
+        got = [f for f, _, _ in items]
+        if kind == "model" and got != folds:
+            incomplete.append(f"{variant} seed {seed}: folds {got} of {folds}")
+            continue
+        p = pd.concat([t[2] for t in items])
         vals = np.zeros((len(ks), len(case_ids), len(COLS)))
         for i, k in enumerate(ks):
             pk = p[p["k"] == k].set_index("case_id")
             missing = set(case_ids) - set(pk.index)
             if missing:
-                raise ConfigError(f"{js.name}: {len(missing)} cases missing at k = {k}")
+                raise ConfigError(f"{variant} seed {seed}: {len(missing)} cases missing at k = {k}")
             vals[i] = pk.loc[case_ids, list(COLS)].to_numpy(dtype=float)
-        runs.append(Run(meta["variant"], meta["seed"], meta["kind"], rep, vals))
-    return runs
+        runs.append(Run(variant, seed, kind, [t[1] for t in items], vals))
+    return runs, incomplete
 
 
 def _ci(samples: np.ndarray) -> tuple[float, float]:
@@ -276,9 +331,13 @@ def aggregate(args, inp, spec: AblationSpec) -> dict:
     scen = cases.loc[keep, "scenario_id"].to_numpy()
     grp = {g: sel[keep] for g, sel in groups(inp.es).items() if g in REPORT_GROUPS}
     ks = list(inp.ks)
-    runs = load_runs(Path(args.runs_dir), inp.cfg.name, fp, case_ids, ks)
-    if not runs:
-        raise ConfigError(f"no runs for {inp.cfg.name} in {args.runs_dir}")
+    folds = spec.folds or sorted(int(f) for f in cases["fold"].unique())
+    runs, incomplete = load_runs(Path(args.runs_dir), inp.cfg.name, fp, case_ids, ks, folds)
+    if not any(r.variant == spec.baseline for r in runs):
+        raise ConfigError(
+            f"no complete {spec.baseline} run for {inp.cfg.name} in {args.runs_dir}"
+            + (f"; incomplete: {incomplete}" if incomplete else "")
+        )
 
     by_variant: dict[str, list[Run]] = {}
     for r in runs:
@@ -319,20 +378,16 @@ def aggregate(args, inp, spec: AblationSpec) -> dict:
         variants[v] = {
             "kind": rs[0].kind,
             "seeds": [r.seed for r in rs],
-            "model": None
-            if rs[0].kind == "reference"
-            else rs[0].report["provenance"]["config"]["model"],
-            "elapsed_seconds": [r.report["elapsed_seconds"] for r in rs],
-            "git": sorted({r.report["provenance"]["git"]["commit"] or "?" for r in rs}),
-            "dirty": any(r.report["provenance"]["git"]["dirty"] for r in rs),
+            "model": rs[0].model,
+            "elapsed_seconds": [round(sum(x["elapsed_seconds"] for x in r.reports), 1) for r in rs],
+            "git": sorted({x["provenance"]["git"]["commit"] or "?" for r in rs for x in r.reports}),
+            "dirty": any(x["provenance"]["git"]["dirty"] for r in rs for x in r.reports),
             "training": [
                 {
                     "seed": r.seed,
-                    "epochs": [f["epochs"] for f in r.report.get("training", {}).get("folds", [])],
-                    "physics_params": [
-                        f.get("physics_params")
-                        for f in r.report.get("training", {}).get("folds", [])
-                    ],
+                    "epochs": [h["epochs"] for h in r.fold_history],
+                    "physics_params": [h.get("physics_params") for h in r.fold_history],
+                    "inner_eval": [h.get("inner_eval") for h in r.fold_history],
                 }
                 for r in rs
                 if r.kind == "model"
@@ -360,7 +415,7 @@ def aggregate(args, inp, spec: AblationSpec) -> dict:
             comp[v] = ck
         comparisons[ref] = comp
 
-    verdicts = _verdicts(spec, variants, comparisons, by_variant, ks, grp)
+    verdicts = _verdicts(spec, variants, comparisons, by_variant, ks)
     report = {
         "name": inp.cfg.name,
         "command": "leaksense ablate",
@@ -376,6 +431,7 @@ def aggregate(args, inp, spec: AblationSpec) -> dict:
         "tercile_edges": inp.es.tercile_edges,
         "baseline": spec.baseline,
         "reference": spec.reference,
+        "incomplete_runs": incomplete,
         "variants": variants,
         "comparisons": comparisons,
         "verdicts": verdicts,
@@ -383,7 +439,7 @@ def aggregate(args, inp, spec: AblationSpec) -> dict:
     return report
 
 
-def _verdicts(spec, variants, comparisons, by_variant, ks, grp) -> dict:
+def _verdicts(spec, variants, comparisons, by_variant, ks) -> dict:
     base = comparisons.get(spec.baseline, {})
     physics = [
         v
@@ -424,26 +480,88 @@ def _verdicts(spec, variants, comparisons, by_variant, ks, grp) -> dict:
             }
         h1[v] = per_k
 
-    # stage-2 rule (fixed in PLAN M10): baseline + the two physics variants with the best
-    # seed-0 small-leak top-3 at k = 8
-    i8 = ks.index(SELECT_K) if SELECT_K in ks else None
-    small = grp.get("leak_type=small")
-    score = {}
-    if i8 is not None and small is not None:
-        for v in physics:
-            r0 = [r for r in by_variant[v] if r.seed == 0]
-            if r0:
-                score[v] = float(r0[0].values[i8][small, 1].mean())
-    best = sorted(score, key=lambda v: -score[v])[:N_FINAL_PHYSICS]
     return {
         "H2_physics_vs_plain_top3_k_le_6": h2,
         "H1_vs_best_nonlearned_top3_k_ge_8": h1,
-        "stage2": {
-            "rule": f"{spec.baseline} + the {N_FINAL_PHYSICS} physics variants with the best "
-            f"seed-0 small-leak top-3 at k = {SELECT_K}",
-            "seed0_small_top3_k8": score,
-            "final_variants": [spec.baseline, *best] if score else [],
-        },
+        "stage2": stage2_selection(spec, variants, by_variant),
+        "noembed_adoption": noembed_adoption(spec, variants, comparisons, ks),
+    }
+
+
+def inner_score(run: Run) -> dict | None:
+    """Inner-validation selection score of one run, pooled over folds (None if not recorded).
+
+    score = mean over k in SELECT_KS of the case-weighted mean over folds of inner top-3;
+    small_k8 = the same for small leaks at k = 8 (first tie-break).
+    """
+    hist = [h.get("inner_eval") for h in run.fold_history]
+    if not hist or any(not h or not all(str(k) in h for k in SELECT_KS) for h in hist):
+        return None
+    per_k = []
+    for k in SELECT_KS:
+        n = sum(h[str(k)]["n"] for h in hist)
+        per_k.append(sum(h[str(k)]["top3"] * h[str(k)]["n"] for h in hist) / n)
+    ns = sum(h["8"].get("n_small", 0) for h in hist)
+    small = sum(h["8"].get("small_top3", 0) * h["8"].get("n_small", 0) for h in hist)
+    return {"score": float(np.mean(per_k)), "small_k8": small / ns if ns else 0.0}
+
+
+def stage2_selection(spec, variants, by_variant) -> dict:
+    """PLAN M10 stage-2 rule: inner-validation scores of the seed-0 runs only."""
+    physics = [
+        v
+        for v, d in variants.items()
+        if d["kind"] == "model" and (d["model"] or {}).get("physics", "none") != "none"
+    ]
+    scores, ineligible = {}, []
+    for v in physics:
+        r0 = [r for r in by_variant[v] if r.seed == 0]
+        sc = inner_score(r0[0]) if r0 else None
+        if sc is None:
+            ineligible.append(v)
+        else:
+            scores[v] = sc
+
+    def key(v):
+        d = variants[v]["model"]
+        return (
+            -round(100 * scores[v]["score"], 1),
+            -round(100 * scores[v]["small_k8"], 1),
+            PHYSICS_ORDER.index(d.get("physics")),
+            d.get("s_levels", "all") != "mid",  # fewer signatures first
+            v,
+        )
+
+    ranked = sorted(scores, key=key)
+    fixed = [x for x in FIXED_FINAL if x in variants]
+    return {
+        "rule": STAGE2_RULE,
+        "inner_scores": scores,
+        "ranked": ranked,
+        "ineligible_no_inner_eval": ineligible,
+        "final_variants": fixed + ranked[:N_FINAL_PHYSICS] if scores else [],
+    }
+
+
+def noembed_adoption(spec, variants, comparisons, ks) -> dict:
+    """PLAN M10 criterion for making node_embed: 0 the default (needs seeds 0, 1, 2 of both)."""
+    out = {"rule": NOEMBED_RULE}
+    have = {v: set(variants.get(v, {}).get("seeds", [])) for v in ("gat", "gat_noembed")}
+    if not all(set(ADOPT_SEEDS) <= s for s in have.values()):
+        return {**out, "decision": "pending", "why": f"needs seeds {ADOPT_SEEDS} of both"}
+    if set(variants["gat"]["seeds"]) != set(variants["gat_noembed"]["seeds"]):
+        return {**out, "decision": "pending", "why": "gat and gat_noembed have different seeds"}
+    comp = comparisons.get("gat", {}).get("gat_noembed")
+    if comp is None or str(SELECT_K) not in comp:
+        return {**out, "decision": "pending", "why": "no paired comparison"}
+    d8 = comp[str(SELECT_K)]["overall"]["top3"]
+    points = {str(k): comp[str(k)]["overall"]["top3"]["value"] for k in ks}
+    ok = d8["lo"] > 0 and all(x >= 0 for x in points.values())
+    return {
+        **out,
+        "decision": "adopt node_embed: 0" if ok else "keep the embedding",
+        "k8_paired_top3": d8,
+        "points": points,
     }
 
 
@@ -583,11 +701,31 @@ def render_markdown(rep: dict) -> str:
         )
         lines.append(f"- `{v}`: {cells}")
     s2 = vd["stage2"]
-    lines += ["", f"**Stage-2 rule:** {s2['rule']}.", ""]
-    if s2["seed0_small_top3_k8"]:
-        sc = ", ".join(f"`{v}` {100 * x:.1f}" for v, x in s2["seed0_small_top3_k8"].items())
-        lines.append(f"Seed-0 small-leak top-3 at k = 8: {sc}.")
-        lines.append(f"Final variants: {', '.join(f'`{v}`' for v in s2['final_variants'])}.")
+    lines += ["", "## Stage-2 selection (inner validation only)", "", f"Rule: {s2['rule']}", ""]
+    if s2["inner_scores"]:
+        lines += [
+            "| rank | variant | inner score (top-3, k = 2–8) | inner small-leak top-3, k = 8 |"
+        ]
+        lines += ["|---|---|---|---|"]
+        for n, v in enumerate(s2["ranked"], 1):
+            sc = s2["inner_scores"][v]
+            lines.append(f"| {n} | `{v}` | {100 * sc['score']:.1f} | {100 * sc['small_k8']:.1f} |")
+        lines += ["", f"**Final variants:** {', '.join(f'`{v}`' for v in s2['final_variants'])}."]
+    if s2["ineligible_no_inner_eval"]:
+        lines.append(f"No inner-validation scores (not ranked): {s2['ineligible_no_inner_eval']}.")
+    na = vd["noembed_adoption"]
+    lines += ["", "## Learned node embedding", "", f"Rule: {na['rule']}.", ""]
+    if na["decision"] == "pending":
+        lines.append(f"**Decision: pending** ({na['why']}).")
+    else:
+        d = na["k8_paired_top3"]
+        lines.append(
+            f"**Decision: {na['decision']}.** Paired top-3 at k = 8: {_diff(d)}; points by k: "
+            + ", ".join(f"{k}: {100 * x:+.1f}" for k, x in na["points"].items())
+            + "."
+        )
+    if rep.get("incomplete_runs"):
+        lines += ["", f"**Incomplete runs (left out):** {'; '.join(rep['incomplete_runs'])}."]
     lines.append("")
     return "\n".join(lines)
 

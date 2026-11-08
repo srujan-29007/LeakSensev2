@@ -122,6 +122,11 @@ def add_parsers(sub) -> None:
     a.add_argument("--variants", help="comma-separated variants to run (default: all)")
     a.add_argument("--seeds", help="comma-separated model seeds to run (default: config seeds)")
     a.add_argument("--runs-dir", default="reports/raw/ablation", help="per-run reports")
+    a.add_argument(
+        "--stop-after-hours",
+        type=float,
+        help="start no new run after this many hours (finished runs stay saved; rerun to resume)",
+    )
     g = a.add_mutually_exclusive_group()
     g.add_argument("--no-aggregate", action="store_true", help="only run (parallel workers)")
     g.add_argument("--aggregate-only", action="store_true", help="only aggregate existing runs")
@@ -244,10 +249,12 @@ def print_status(args, inp, spec: AblationSpec, variants: list[str], seeds: list
     print(f"{n_done} of {len(plan)} runs done in {runs_dir}")
 
 
-def run_all(args, inp, spec: AblationSpec, variants: list[str], seeds: list[int]) -> None:
+def run_all(args, inp, spec: AblationSpec, variants: list[str], seeds: list[int]) -> bool:
+    """Run every missing run; False if the time budget stopped it early."""
     from leaksense.models.baselines import MODELS, NEEDS_SENSITIVITY
     from leaksense.train_cmds import make_model
 
+    t_start = time.perf_counter()
     runs_dir = Path(args.runs_dir)
     runs_dir.mkdir(parents=True, exist_ok=True)
     fp = _fingerprint(args, inp, spec)
@@ -282,6 +289,12 @@ def run_all(args, inp, spec: AblationSpec, variants: list[str], seeds: list[int]
         if _is_done(runs_dir, name, key):
             print(f"{name}: done, skipped")
             continue
+        hours = (time.perf_counter() - t_start) / 3600
+        if args.stop_after_hours is not None and hours >= args.stop_after_hours:
+            todo = [x["name"] for x in plan if not _is_done(runs_dir, x["name"], x["key"])]
+            print(f"time budget: {hours:.2f} h >= {args.stop_after_hours} h, no new runs started")
+            print(f"not run yet ({len(todo)}): {', '.join(todo)}", flush=True)
+            return False
         model_cfg = {**cfg.model, **spec.variants[v], "seed": s}
         vinp = dataclasses.replace(inp, cfg=dataclasses.replace(cfg, model=model_cfg))
         model = make_model(vinp, model_cfg)
@@ -298,6 +311,7 @@ def run_all(args, inp, spec: AblationSpec, variants: list[str], seeds: list[int]
             runs_dir,
             training=lambda m=model, f=f: {**m.describe(), "eval_folds": [f]},
         )
+    return True
 
 
 # ----------------------------------------------------------------------------- aggregate
@@ -823,8 +837,9 @@ def cmd_ablate(args: argparse.Namespace) -> int:
     if args.status:
         print_status(args, inp, spec, variants, seeds)
         return EXIT_OK
-    if not args.aggregate_only:
-        run_all(args, inp, spec, variants, seeds)
+    if not args.aggregate_only and not run_all(args, inp, spec, variants, seeds):
+        print(f"stopped by the time budget after {time.perf_counter() - t0:.0f}s; not aggregated")
+        return EXIT_OK
     if args.no_aggregate:
         print(f"runs done in {time.perf_counter() - t0:.0f}s")
         return EXIT_OK

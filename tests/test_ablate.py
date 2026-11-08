@@ -156,6 +156,19 @@ def test_ablate_status_and_staged_writes(abl_env, capsys):
     assert not list(runs.glob("t__gat_sprior*"))  # --status trains nothing
 
 
+def test_ablate_time_budget_stops_before_new_runs(abl_env, capsys):
+    from leaksense.cli import main
+
+    tmp_path, args = abl_env
+    runs = tmp_path / "runs"
+    budget = ["--variants", "gat", "--seeds", "0", "--stop-after-hours", "0"]
+    assert main([*args, *budget]) == 0
+    out = capsys.readouterr().out
+    assert "no new runs started" in out and "t__gat_s0_f0, t__gat_s0_f1" in out
+    assert [p.name for p in runs.glob("*.json")] == ["t__ref_sigmatch_all.json"]
+    assert not (tmp_path / "rep" / "t.json").exists()  # not aggregated
+
+
 def test_ablate_refuses_to_run_next_to_other_fingerprint(abl_env, capsys):
     from leaksense.cli import main
 

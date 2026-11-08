@@ -60,6 +60,7 @@ def build_parser() -> argparse.ArgumentParser:
     m.add_argument("--trials", type=int, default=50, help="candidate seeds for type/kind balance")
     m.set_defaults(func=cmd_make_splits)
 
+    from leaksense.ablate import add_parsers as add_ablate
     from leaksense.eval_cmds import add_parsers as add_eval
     from leaksense.feature_cmds import add_parsers
     from leaksense.sens_cmds import add_parsers as add_sens
@@ -69,6 +70,7 @@ def build_parser() -> argparse.ArgumentParser:
     add_sens(sub)
     add_eval(sub)
     add_train(sub)
+    add_ablate(sub)
     return parser
 
 

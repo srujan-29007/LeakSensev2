@@ -14,10 +14,11 @@ from leaksense.eval_cmds import EXIT_OK, add_common, load_inputs, run_and_report
 
 
 def learned_models() -> dict:
+    from leaksense.models.gat import MaskedGAT
     from leaksense.models.gbm import MaskedGBM
     from leaksense.models.mlp import MaskedMLP
 
-    return {"mlp": MaskedMLP, "gbm": MaskedGBM}
+    return {"mlp": MaskedMLP, "gbm": MaskedGBM, "gat": MaskedGAT}
 
 
 def add_parsers(sub) -> None:

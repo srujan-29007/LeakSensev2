@@ -1,0 +1,34 @@
+# M9 masked GAT. Features: same block as full.yaml (shares its cache). The transform is fixed to
+# scale_magnitude: inner validation chose it in every M8 fold for both mlp and gbm, and a grid
+# would multiply the cost of the slowest rung.
+name: gat_cpu
+seed: 0
+n_scenarios: null
+features:
+  slot: tod_weekday
+  baseline_days: 14
+  estimator: mean
+  window: 48
+  stride: 24
+  max_lag_days: 7
+  max_windows_per_case: 32
+  pre_guard_steps: 0
+  snr_holdout_days: 3.0
+model:
+  kind: gat
+  transform: scale_magnitude
+  hidden: 64
+  heads: 4
+  layers: 4
+  node_embed: 8
+  dropout: 0.1
+  lr: 0.001
+  weight_decay: 0.0001
+  batch_size: 256
+  max_epochs: 150
+  patience: 20
+  val_frac: 0.15
+  class_weight: inverse
+  k_min: 1
+  num_threads: 4
+  seed: 0

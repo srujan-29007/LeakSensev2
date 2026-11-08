@@ -83,6 +83,20 @@ def encode(x: np.ndarray, mask: np.ndarray, transform: str) -> np.ndarray:
     return np.concatenate([transforms.apply(transform, xm, m), m.astype(np.float32)], axis=1)
 
 
+def split_encoded(x, j: int):
+    """Inverse of the ``encode`` layout -> (pattern, magnitude or None, mask), as slices.
+
+    The row is ``[T(ΔH·m) (j), magnitude (1, scale_magnitude only), m (j)]``. Works on numpy
+    arrays and torch tensors. Width 2j means no magnitude column, 2j+1 means one.
+    """
+    w = x.shape[-1]
+    if w == 2 * j:
+        return x[..., :j], None, x[..., j:]
+    if w == 2 * j + 1:
+        return x[..., :j], x[..., j : j + 1], x[..., j + 1 :]
+    raise ValueError(f"input width {w} does not match {j} junctions")
+
+
 def random_k_masks(n: int, j: int, k_min: int, rng: np.random.Generator) -> np.ndarray:
     """(n, j) masks, each with k ~ U{k_min..j} random sensed junctions."""
     k = rng.integers(min(k_min, j), j + 1, size=n)

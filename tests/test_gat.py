@@ -51,7 +51,7 @@ def test_output_shapes(net):
     m.fit(cases, windows)
     s = m.batch_scores(windows, np.ones(4, bool))
     assert s.shape == (4, 4) and np.isfinite(s).all()
-    assert np.allclose(np.logaddexp.reduce(s, axis=1) <= 0, True)  # mean of log-probs
+    assert (np.logaddexp.reduce(s, axis=1) <= 1e-6).all()  # mean of log-probs
     single = np.stack([m.case_scores(w, np.ones(4, bool)) for w in windows])
     assert np.allclose(s, single, atol=1e-5)
 
@@ -78,6 +78,41 @@ def test_reservoir_input_is_zero(net):
     gnet(torch.from_numpy(x.astype(np.float32)))
     res = [i for i in range(g.n_nodes) if i not in g.sensor_pos.tolist()]
     assert res == [0] and (seen["x"][:, 0, :2] == 0).all()
+
+
+@pytest.mark.parametrize("transform", ["scale_magnitude", "none"])
+def test_node_and_head_inputs_follow_encode_layout(net, transform):
+    """The node mask channel is the mask, and the head gets encode's magnitude column."""
+    m = _gat(net, transform=transform)
+    g = m.graph
+    mask = np.array([[True, False, True, True], [False, True, False, True]])
+    x = encode(-np.arange(1.0, 9.0).reshape(2, 4), mask, transform).astype(np.float32)
+    gnet = m._make_net(m.base, x.shape[1])
+    seen = {}
+    gnet.inp.register_forward_pre_hook(lambda mod, inp: seen.update(node=inp[0]))
+    gnet.head.register_forward_pre_hook(lambda mod, inp: seen.update(head=inp[0]))
+    with torch.no_grad():
+        gnet(torch.from_numpy(x))
+    node = seen["node"][:, g.sensor_pos].detach()
+    assert torch.equal(node[:, :, 1], torch.from_numpy(mask.astype(np.float32)))
+    pattern = np.where(mask, encode(-np.arange(1.0, 9.0).reshape(2, 4), mask, transform)[:, :4], 0)
+    assert np.allclose(node[:, :, 0].numpy(), pattern)
+    if transform == "scale_magnitude":
+        mag = torch.from_numpy(x[:, 4:5])  # encode puts the magnitude right after the pattern
+        assert torch.equal(seen["head"][:, :, -1], mag.expand(-1, seen["head"].shape[1]))
+
+
+def test_split_encoded_roundtrip():
+    from leaksense.models.mlp import split_encoded
+
+    mask = np.array([[True, False, True]])
+    for t, has_mag in (("scale_magnitude", True), ("none", False), ("signed_log1p", False)):
+        x = encode(np.array([[-2.0, -9.0, -4.0]]), mask, t)
+        p, mag, m = split_encoded(x, 3)
+        assert np.array_equal(m, mask.astype(float)) and (mag is not None) == has_mag
+        assert p.shape == (1, 3) and p[0, 1] == 0
+    with pytest.raises(ValueError):
+        split_encoded(np.zeros((1, 5)), 3)
 
 
 def test_overfits_five_cases(net):

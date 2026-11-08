@@ -25,7 +25,7 @@ import torch
 from torch import nn
 from torch_geometric.nn import GATv2Conv
 
-from leaksense.models.mlp import MaskedMLP, MLPConfig
+from leaksense.models.mlp import MaskedMLP, MLPConfig, split_encoded
 from leaksense.network import EDGE_FEATURES, Network
 
 
@@ -117,9 +117,10 @@ class _GATNet(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         g, j, b, n = self.g, self.j, x.shape[0], self.g.n_nodes
+        pattern, mag, mask = split_encoded(x, j)
         node = x.new_zeros(b, n, 2)  # reservoir (and any non-sensor node) stays [0, 0]
-        node[:, g.sensor_pos, 0] = x[:, :j]
-        node[:, g.sensor_pos, 1] = x[:, j : 2 * j]
+        node[:, g.sensor_pos, 0] = pattern
+        node[:, g.sensor_pos, 1] = mask
         if self.embed is not None:
             node = torch.cat([node, self.embed.weight.expand(b, -1, -1)], dim=2)
         h = self.inp(node).reshape(b * n, -1)
@@ -131,8 +132,8 @@ class _GATNet(nn.Module):
         h = h.view(b, n, -1)
         hu, hv = h[:, g.pipe_u], h[:, g.pipe_v]
         parts = [hu + hv, (hu - hv).abs(), g.pipe_attr.expand(b, -1, -1)]
-        if self.has_mag:
-            parts.append(x[:, 2 * j :].unsqueeze(1).expand(-1, hu.shape[1], -1))
+        if mag is not None:
+            parts.append(mag.unsqueeze(1).expand(-1, hu.shape[1], -1))
         return self.head(torch.cat(parts, dim=2)).squeeze(2)
 
 

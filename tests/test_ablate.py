@@ -139,6 +139,34 @@ def test_ablate_resumes_per_fold_and_skips_incomplete(abl_env):
     assert "gat_sprior" in rep["variants"] and rep["incomplete_runs"] == []
 
 
+def test_ablate_status_and_staged_writes(abl_env, capsys):
+    from leaksense.cli import main
+
+    tmp_path, args = abl_env
+    runs = tmp_path / "runs"
+    assert main([*args, "--variants", "gat", "--seeds", "0", "--no-aggregate"]) == 0
+    assert list((runs / ".partial").iterdir()) == []  # everything moved in
+    (runs / "t__gat_s0_f1.json").write_text('{"ablation": {"ke')  # cut off mid-write
+    capsys.readouterr()
+    assert main([*args, "--variants", "gat,gat_sprior", "--seeds", "0", "--status"]) == 0
+    out = capsys.readouterr().out
+    assert "done  t__ref_sigmatch_all" in out and "done  t__gat_s0_f0" in out
+    assert "todo  t__gat_s0_f1" in out and "todo  t__gat_sprior_s0_f0" in out
+    assert "2 of 5 runs done" in out
+    assert not list(runs.glob("t__gat_sprior*"))  # --status trains nothing
+
+
+def test_ablate_refuses_to_run_next_to_other_fingerprint(abl_env, capsys):
+    from leaksense.cli import main
+
+    tmp_path, args = abl_env
+    assert main([*args, "--variants", "gat", "--seeds", "0", "--no-aggregate"]) == 0
+    mixed = [a if a != "2" else "3" for a in args]  # --draws 3
+    assert main([*mixed, "--variants", "gat_sprior", "--seeds", "0", "--no-aggregate"]) == 2
+    assert "different ['draws']" in capsys.readouterr().err
+    assert not list((tmp_path / "runs").glob("t__gat_sprior*"))
+
+
 def _fake_run(variant, seed, top3, small8, physics="prior", s_levels="all", n=10):
     import numpy as np
 

@@ -6,10 +6,15 @@ the non-learned reference rungs, and aggregates them into ``reports/<config name
 - **Same everything.** Every run uses the same splits, features, k list, evaluation seed and
   draws, so ``evaluate.random_masks`` gives every run the same sensor sets per k. Only the
   model settings and the model seed differ. The aggregator refuses runs that disagree.
-- **Resumable.** Each run writes ``<runs-dir>/<config>__<variant>_s<seed>.json`` and its
-  per-case predictions (``.parquet``) next to it. A run whose files exist with the same key is
-  skipped, so runs can be split over processes (``--variants``, ``--seeds``, ``--no-aggregate``)
-  or machines (copy the runs dir back, then ``--aggregate-only``).
+- **Resumable.** Each (variant, seed, fold) writes
+  ``<runs-dir>/<config>__<variant>_s<seed>_f<fold>.json`` and its per-case predictions
+  (``.parquet``) as soon as it finishes. Files are staged in ``<runs-dir>/.partial`` and moved in
+  with the ``.json`` last, so a killed run leaves no half-written result. A run whose files exist
+  with the same key is skipped, so runs can be split over processes (``--variants``, ``--seeds``,
+  ``--no-aggregate``) or machines (copy the runs dir back, then ``--aggregate-only``).
+  ``--status`` lists done and missing runs without training. Saved runs of the same config with a
+  different fingerprint (features, splits, k list, draws, seed, folds) stop the command before
+  any training, because they could never be aggregated with the new runs.
 - **Paired comparisons.** Variants are compared case by case, on seed-averaged per-case metrics,
   with a bootstrap over scenarios: the same cases and sensor sets on both sides.
 """
@@ -21,6 +26,7 @@ import copy
 import dataclasses
 import hashlib
 import json
+import os
 import re
 import shutil
 import time
@@ -119,6 +125,9 @@ def add_parsers(sub) -> None:
     g = a.add_mutually_exclusive_group()
     g.add_argument("--no-aggregate", action="store_true", help="only run (parallel workers)")
     g.add_argument("--aggregate-only", action="store_true", help="only aggregate existing runs")
+    g.add_argument(
+        "--status", action="store_true", help="list done and missing runs, train nothing"
+    )
     a.set_defaults(func=cmd_ablate)
 
 
@@ -153,13 +162,35 @@ def _is_done(runs_dir: Path, name: str, key: str) -> bool:
     js, pq = runs_dir / f"{name}.json", runs_dir / f"{name}.parquet"
     if not (js.is_file() and pq.is_file()):
         return False
-    return json.loads(js.read_text()).get("ablation", {}).get("key") == key
+    try:
+        meta = json.loads(js.read_text()).get("ablation", {})
+    except json.JSONDecodeError:  # cut off mid-write (before staging existed): run it again
+        return False
+    return meta.get("key") == key
+
+
+def check_runs_dir(runs_dir: Path, cfg_name: str, fp: dict) -> None:
+    """Refuse to add runs next to saved runs of the same config with a different fingerprint."""
+    for js in sorted(Path(runs_dir).glob(f"{cfg_name}__*.json")):
+        try:
+            meta = json.loads(js.read_text()).get("ablation")
+        except json.JSONDecodeError:
+            continue
+        if meta and meta.get("fp") != fp:
+            diff = sorted(k for k in fp if meta["fp"].get(k) != fp[k])
+            raise ConfigError(
+                f"{js.name} in {runs_dir} was run with different {diff} "
+                f"(saved {[meta['fp'].get(k) for k in diff]}, now {[fp[k] for k in diff]}); "
+                "new runs could not be aggregated with it. Rebuild the same features and "
+                "splits, or use another --runs-dir"
+            )
 
 
 def _run(args, inp, name, model, model_name, folds, meta, runs_dir: Path, training=None) -> None:
     t0 = time.perf_counter()
+    stage = runs_dir / ".partial"
     ns = copy.copy(args)
-    ns.name, ns.reports_dir = name, str(runs_dir)
+    ns.name, ns.reports_dir = name, str(stage)
 
     def extra() -> dict:
         out = {"command": "leaksense ablate", "ablation": meta}
@@ -168,9 +199,49 @@ def _run(args, inp, name, model, model_name, folds, meta, runs_dir: Path, traini
         return out
 
     run_and_report(ns, inp, model, model_name, t0, folds=folds, extra=extra)
-    # keep the per-case predictions next to the run, so a runs dir is self-contained
+    # keep the per-case predictions next to the run, so a runs dir is self-contained. The .json
+    # is moved in last: once it is there, the run is complete
     src = get_artifacts_dir() / "eval" / name / "predictions.parquet"
-    shutil.copyfile(src, runs_dir / f"{name}.parquet")
+    shutil.copyfile(src, stage / f"{name}.parquet")
+    for ext in ("parquet", "md", "json"):
+        os.replace(stage / f"{name}.{ext}", runs_dir / f"{name}.{ext}")
+
+
+def plan_runs(args, inp, spec: AblationSpec, variants: list[str], seeds: list[int]) -> list[dict]:
+    """Every run, in order: the reference rungs, then each (variant, seed, fold)."""
+    from leaksense.models.baselines import MODELS
+
+    fp = _fingerprint(args, inp, spec)
+    cfg = inp.cfg
+    if cfg.model.get("kind") != "gat":
+        raise ConfigError("the ablation's model block must be kind: gat")
+    plan = []
+    for ref in spec.reference:
+        if ref not in MODELS:
+            raise ConfigError(f"unknown reference rung {ref!r}; one of {sorted(MODELS)}")
+        name = _run_name(cfg.name, f"ref_{ref}", None)
+        plan.append({"name": name, "key": _key(fp, {"reference": ref}), "reference": ref})
+    eval_folds = spec.folds or sorted(int(f) for f in inp.es.cases["fold"].unique())
+    for v in variants:
+        for s in seeds:
+            model_cfg = {**cfg.model, **spec.variants[v], "seed": s}
+            for f in eval_folds:
+                key = _key(fp, {"model": model_cfg, "fold": f})
+                name = _run_name(cfg.name, v, s, f)
+                plan.append({"name": name, "key": key, "variant": v, "seed": s, "fold": f})
+    return plan
+
+
+def print_status(args, inp, spec: AblationSpec, variants: list[str], seeds: list[int]) -> None:
+    runs_dir = Path(args.runs_dir)
+    check_runs_dir(runs_dir, inp.cfg.name, _fingerprint(args, inp, spec))
+    plan = plan_runs(args, inp, spec, variants, seeds)
+    n_done = 0
+    for r in plan:
+        done = _is_done(runs_dir, r["name"], r["key"])
+        n_done += done
+        print(f"{'done' if done else 'todo'}  {r['name']}")
+    print(f"{n_done} of {len(plan)} runs done in {runs_dir}")
 
 
 def run_all(args, inp, spec: AblationSpec, variants: list[str], seeds: list[int]) -> None:
@@ -180,16 +251,14 @@ def run_all(args, inp, spec: AblationSpec, variants: list[str], seeds: list[int]
     runs_dir = Path(args.runs_dir)
     runs_dir.mkdir(parents=True, exist_ok=True)
     fp = _fingerprint(args, inp, spec)
+    check_runs_dir(runs_dir, inp.cfg.name, fp)
     cfg = inp.cfg
-    if cfg.model.get("kind") != "gat":
-        raise ConfigError("the ablation's model block must be kind: gat")
+    plan = plan_runs(args, inp, spec, variants, seeds)
 
-    eval_folds = spec.folds or sorted(int(f) for f in inp.es.cases["fold"].unique())
-    for ref in spec.reference:
-        if ref not in MODELS:
-            raise ConfigError(f"unknown reference rung {ref!r}; one of {sorted(MODELS)}")
-        name = _run_name(cfg.name, f"ref_{ref}", None)
-        key = _key(fp, {"reference": ref})
+    for r in plan:
+        if "reference" not in r:
+            continue
+        ref, name, key = r["reference"], r["name"], r["key"]
         if _is_done(runs_dir, name, key):
             print(f"{name}: done, skipped")
             continue
@@ -206,30 +275,29 @@ def run_all(args, inp, spec: AblationSpec, variants: list[str], seeds: list[int]
 
     # one run per (variant, seed, fold): each fold is saved as soon as it finishes, so an
     # interrupted run resumes from the next fold
-    for v in variants:
-        for s in seeds:
-            model_cfg = {**cfg.model, **spec.variants[v], "seed": s}
-            vinp = dataclasses.replace(inp, cfg=dataclasses.replace(cfg, model=model_cfg))
-            for f in eval_folds:
-                name = _run_name(cfg.name, v, s, f)
-                key = _key(fp, {"model": model_cfg, "fold": f})
-                if _is_done(runs_dir, name, key):
-                    print(f"{name}: done, skipped")
-                    continue
-                model = make_model(vinp, model_cfg)
-                meta = {"key": key, "kind": "model", "variant": v, "seed": s, "fold": f, "fp": fp}
-                print(f"{name}: training {v} (seed {s}), scoring fold {f}")
-                _run(
-                    args,
-                    vinp,
-                    name,
-                    model,
-                    "gat",
-                    [f],
-                    meta,
-                    runs_dir,
-                    training=lambda m=model, f=f: {**m.describe(), "eval_folds": [f]},
-                )
+    for r in plan:
+        if "reference" in r:
+            continue
+        v, s, f, name, key = r["variant"], r["seed"], r["fold"], r["name"], r["key"]
+        if _is_done(runs_dir, name, key):
+            print(f"{name}: done, skipped")
+            continue
+        model_cfg = {**cfg.model, **spec.variants[v], "seed": s}
+        vinp = dataclasses.replace(inp, cfg=dataclasses.replace(cfg, model=model_cfg))
+        model = make_model(vinp, model_cfg)
+        meta = {"key": key, "kind": "model", "variant": v, "seed": s, "fold": f, "fp": fp}
+        print(f"{name}: training {v} (seed {s}), scoring fold {f}", flush=True)
+        _run(
+            args,
+            vinp,
+            name,
+            model,
+            "gat",
+            [f],
+            meta,
+            runs_dir,
+            training=lambda m=model, f=f: {**m.describe(), "eval_folds": [f]},
+        )
 
 
 # ----------------------------------------------------------------------------- aggregate
@@ -752,6 +820,9 @@ def cmd_ablate(args: argparse.Namespace) -> int:
         if bad:
             raise ConfigError(f"unknown variants {bad}; the config has {list(spec.variants)}")
     seeds = spec.seeds if not args.seeds else [int(s) for s in args.seeds.split(",")]
+    if args.status:
+        print_status(args, inp, spec, variants, seeds)
+        return EXIT_OK
     if not args.aggregate_only:
         run_all(args, inp, spec, variants, seeds)
     if args.no_aggregate:

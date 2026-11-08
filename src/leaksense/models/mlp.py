@@ -16,7 +16,9 @@ from __future__ import annotations
 
 import hashlib
 import itertools
+from collections.abc import Callable
 from dataclasses import asdict, dataclass, fields, replace
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -56,15 +58,15 @@ class MLPConfig:
             raise ValueError("layers, hidden and k_min must be >= 1")
 
 
-def parse_config(d: dict) -> tuple[MLPConfig, dict[str, list]]:
-    """Model config dict -> (base config, grid of list-valued settings)."""
+def parse_config(d: dict, cls: type = MLPConfig) -> tuple[Any, dict[str, list]]:
+    """Model config dict -> (base config of type ``cls``, grid of list-valued settings)."""
     d = {k: v for k, v in d.items() if k != "kind"}
-    names = {f.name for f in fields(MLPConfig)}
+    names = {f.name for f in fields(cls)}
     unknown = set(d) - names
     if unknown:
-        raise ValueError(f"unknown mlp settings: {sorted(unknown)}")
+        raise ValueError(f"unknown {cls.__name__} settings: {sorted(unknown)}")
     grid = {k: list(v) for k, v in d.items() if isinstance(v, list)}
-    base = MLPConfig(**{k: (v[0] if isinstance(v, list) else v) for k, v in d.items()})
+    base = cls(**{k: (v[0] if isinstance(v, list) else v) for k, v in d.items()})
     for k, vals in grid.items():  # validate every grid value
         for v in vals:
             replace(base, **{k: v})
@@ -156,23 +158,33 @@ def _seed_for(cases: pd.DataFrame, seed: int) -> int:
     return int(hashlib.sha256(f"{seed}:{key}".encode()).hexdigest()[:8], 16)
 
 
+def predict_logits(net: nn.Module, x: torch.Tensor, chunk: int = 4096) -> torch.Tensor:
+    """``net(x)`` in chunks of rows (bounds memory for graph models); call under no_grad."""
+    if len(x) <= chunk:
+        return net(x)
+    return torch.cat([net(x[i : i + chunk]) for i in range(0, len(x), chunk)])
+
+
 def _train(
-    cfg: MLPConfig,
+    cfg: Any,
     tr: _Data,
-    n_classes: int,
     seed: int,
     epochs: int,
     val: _Data | None = None,
-) -> tuple[_Net, int, float, list[float]]:
+    *,
+    make_net: Callable[[Any, int], nn.Module],
+) -> tuple[nn.Module, int, float, list[float]]:
     """Train; with ``val``, stop early and return the best epoch's weights.
 
+    ``make_net(cfg, d_in)`` builds the module; it receives ``encode`` output rows of width d_in.
+    ``cfg`` needs the training fields of ``MLPConfig`` (transform, lr, batch_size, ...).
     Returns (net, epochs used, best validation loss or nan, validation-loss curve).
     """
     torch.manual_seed(seed)
     rng = np.random.default_rng(seed)
     j = tr.x.shape[1]
     d_in = encode(tr.x[:1], np.ones((1, j), bool), cfg.transform).shape[1]
-    net = _Net(d_in, n_classes, cfg)
+    net = make_net(cfg, d_in)
     opt = torch.optim.AdamW(net.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
     yt, wt = torch.from_numpy(tr.y), torch.from_numpy(tr.w)
 
@@ -204,7 +216,7 @@ def _train(
             continue
         net.eval()
         with torch.no_grad():
-            vl = nn.functional.cross_entropy(net(vx), vy, reduction="none")
+            vl = nn.functional.cross_entropy(predict_logits(net, vx), vy, reduction="none")
             vloss = float((vl * vw).sum() / vw.sum())
         curve.append(vloss)
         if vloss < best - 1e-4:
@@ -227,13 +239,18 @@ class MaskedMLP:
     """Masked MLP over ``[T(ΔH·m), m]``; see the module docstring."""
 
     name = "mlp"
+    config_cls: type = MLPConfig
 
     def __init__(self, net: Network, model_cfg: dict | None = None) -> None:
         self.n = len(net.leak_pipe_ids)
-        self.base, self.grid = parse_config(model_cfg or {})
+        self.base, self.grid = parse_config(model_cfg or {}, self.config_cls)
         self.cfg = self.base
-        self.net: _Net | None = None
+        self.net: nn.Module | None = None
         self.history: list[dict] = []  # one entry per fit (fold)
+
+    def _make_net(self, cfg: Any, d_in: int) -> nn.Module:
+        """Build the module for one training run; subclasses swap the architecture."""
+        return _Net(d_in, self.n, cfg)
 
     # -- training
     def fit(self, train: pd.DataFrame, windows: list[np.ndarray]) -> None:
@@ -253,7 +270,9 @@ class MaskedMLP:
                 cw = class_weights(tr_cases["y"].to_numpy(), self.n, cfg.class_weight)
                 tr = _windows(tr_cases, [windows[i] for i in tr_idx], cw)
                 va = _windows(va_cases, [windows[i] for i in va_idx], cw)
-                net, ep, vloss, _ = _train(cfg, tr, self.n, seed, cfg.max_epochs, va)
+                net, ep, vloss, _ = _train(
+                    cfg, tr, seed, cfg.max_epochs, va, make_net=self._make_net
+                )
                 trials.append({"cfg": cfg, "net": net, "epochs": ep, "val_loss": vloss})
             pick = min(trials, key=lambda t: t["val_loss"])
         else:  # too few cases for an inner split (tiny tests): train the base config as is
@@ -263,7 +282,9 @@ class MaskedMLP:
         if cfg.refit or pick["net"] is None:
             cw = class_weights(train["y"].to_numpy(), self.n, cfg.class_weight)
             full = _windows(train, windows, cw)
-            self.net, _, _, _ = _train(cfg, full, self.n, seed, max(1, pick["epochs"]))
+            self.net, _, _, _ = _train(
+                cfg, full, seed, max(1, pick["epochs"]), make_net=self._make_net
+            )
         else:
             self.net = pick["net"]
         self.net.eval()
@@ -289,15 +310,13 @@ class MaskedMLP:
     # -- scoring
     def batch_scores(self, xs: list[np.ndarray], mask: np.ndarray) -> np.ndarray:
         if self.net is None:
-            raise RuntimeError("MaskedMLP.fit was not called")
+            raise RuntimeError(f"{type(self).__name__}.fit was not called")
         lens = np.array([len(x) for x in xs])
         x = np.concatenate(xs).astype(np.float32)
         m = np.broadcast_to(np.asarray(mask, bool), x.shape)
         with torch.no_grad():
-            lp = torch.log_softmax(
-                self.net(torch.from_numpy(encode(x, m, self.cfg.transform).astype(np.float32))),
-                dim=1,
-            ).numpy()
+            xin = torch.from_numpy(encode(x, m, self.cfg.transform).astype(np.float32))
+            lp = torch.log_softmax(predict_logits(self.net, xin), dim=1).numpy()
         starts = np.concatenate([[0], np.cumsum(lens)[:-1]])
         return np.add.reduceat(lp, starts, axis=0) / lens[:, None]
 

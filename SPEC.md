@@ -1,6 +1,6 @@
 # LeakSense: Specification
 
-- **Status:** M0–M7 are done (M5 ran before M4's measurements). The data contract is verified and enforced by `leaksense validate-data` (see `reports/data_inventory.md`).
+- **Status:** M0–M9 are done (M5 ran before M4's measurements). M10 (physics-input GAT and ablation) is in progress. The data contract is verified and enforced by `leaksense validate-data` (see `reports/data_inventory.md`).
 - **Last updated:** 2026-11-08
 
 ## 1. Problem
@@ -142,6 +142,15 @@ A single leak has already been detected on the Hanoi water network (LeakDB). Pre
   - **Limits:**
     - EPANET holds a leak demand fixed whatever the pressure, while LeakDB leaks are pressure-dependent. Big leaks on thin branches therefore over-drop: 19 of 198 runs go below 0 m, against −61 m observed for scenario 34. Cosine matching is scale-free, so this matters little for `sigmatch`.
     - The smallest cosine between the levels is 0.978, below the 0.99 bar, so the demand level changes the response shape somewhat (mostly small leaks on the southern branches, pipes 13–16 and 27–32).
+- **Masked GAT (M9) — deviations from the plan.** Both are recorded here because they change what the rung is:
+  - **Learned node embedding.** Each of the 32 nodes gets an 8-d learned embedding, concatenated to its `[T(ΔH·m), m]` input. It is positional: it gives the shared GAT weights node identity on the one fixed Hanoi graph, so the model does not transfer to another network. It is not a physics input. M10 ablates it (`gat_noembed`).
+  - **One input transform.** The GAT uses `scale_magnitude` only (each window divided by its largest sensed |ΔH|, with log1p of that magnitude passed to the pipe head), with no inner-validation grid over transforms. M8's inner validation chose `scale_magnitude` in 5 of 5 folds for both the MLP and the GBM, and a grid would multiply the cost of the slowest rung.
+  - **Input layout bug, fixed.** The first M9 run (commit `ffb1115`) read the `encode` row with the wrong offsets under `scale_magnitude`: junction 2's mask channel held the log magnitude, the other junctions got a neighbour's mask bit, and the pipe head's magnitude was junction 32's mask bit. No unsensed data leaked in. Fixed in `81750f7` with a layout test; the M9 numbers in PLAN.md come from the re-run.
+- **Physics inputs (M10).** S enters the GAT only through the cosine between the window's sensed pattern and each pipe's signature, both restricted to the sensed junctions: cos = Σ_j p_j m_j S_jpv / (‖p·m‖ · √Σ_j m_j S²_jpv), over the 6 signatures per pipe (2 sizes × 3 demand levels; 2 for `s_levels: mid`). Neither unsensed ΔH nor S at unsensed junctions can reach the output (tested for every variant). Three variants, fixed in advance:
+  - `node`: one more node channel, the pattern imputed from S, Σ softmax(cos/τ)·Ŝ, with Ŝ each S column scaled to max |·| = 1 and τ learned.
+  - `edge`: each pipe's 6 cosines as extra edge features (both directions; pipe 1 gets 0) and extra pipe-head inputs.
+  - `prior`: logit_p += a · max_v cos_pv, with a learned (starting at 10), so training starts near `sigmatch_all`.
+  - The cosine is scale-free, so physics variants accept `scale_magnitude` or `none`, never `signed_log1p`.
 
 ## 6. Success metrics
 
@@ -181,6 +190,7 @@ How every metric is reported:
 These are not promises. The final report says which ones held.
 
 - **H1.** At k ≥ 8, the GAT beats the best non-learned rung on top-3 accuracy, with non-overlapping CIs.
+  - *Interim (CV, not the locked test; M9 re-run, `reports/gat.json` vs `reports/sigmatch_all.json`, same k and same 20 sensor sets):* fails at k = 8 (67.9 [65.4, 70.2] vs 78.4 [75.7, 81.2], the GAT is worse); CIs overlap at k = 12 and 16; at k = 31 the CIs touch (GAT 95.9 [93.8, 97.9] vs 91.2 [88.5, 93.8]), so not strictly non-overlapping. M10 re-checks it for every variant.
 - **H2.** At small budgets (k ≤ 6), physics inputs improve on the plain GAT.
 - **H3.** Greedy placement beats the random median at every k from 2 to 16, and lies above the random 95th percentile for k ≤ 8.
 - **H4.** The single masked model gets within 3 points of top-3 accuracy of a model trained for one fixed budget, at k = 4 and k = 8.

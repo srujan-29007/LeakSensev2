@@ -262,28 +262,49 @@ notebooks/kaggle_run.ipynb     # calls the CLI only, no logic
   - Edge features: log of nominal length, diameter, roughness and resistance, z-scored over the pipes.
   - Pipe head: an MLP on `[h_u + h_v, |h_u − h_v|, edge features, magnitude]`, symmetric in u and v.
   - `gat_cpu.yaml` fixes `transform: scale_magnitude` (M8 chose it in every fold for both models) instead of running a grid.
-- **Verified** (419 CV cases, commit `ffb1115`):
-  - 10 tests in `tests/test_gat.py` pass: shapes, masked-junction invariance for every transform, reservoir input is always zero, overfits 5 cases, deterministic, CLI.
-  - The fold-0 smoke run took 794 s. The full 5-fold `train --config configs/gat_cpu.yaml` took 3,661 s on a laptop CPU, about 6× the MLP's 590 s. Early stopping chose 56–85 epochs.
+- **Verified** (419 CV cases, re-run at commit `81750f7`, `reports/gat.json`):
+  - **Layout bug, fixed.** The first run (`ffb1115`) read the encoded row with the wrong offsets under `scale_magnitude`: junction 2's mask channel held the log magnitude, the other junctions got a neighbour's mask bit, and the pipe head's magnitude was junction 32's mask bit. No unsensed data leaked in (the masking test passed), but it was not the model described. `81750f7` reads the row through one helper (`mlp.split_encoded`) and adds a layout test that fails on the old code. All numbers below are from the re-run.
+  - 13 tests in `tests/test_gat.py` pass: shapes, input layout, masked-junction invariance for every transform, reservoir input is always zero, overfits 5 cases, deterministic, CLI.
+  - The fold-0 smoke run took 683 s (`reports/gat_fold0.json`). The full 5-fold `train --config configs/gat_cpu.yaml` took 3,437 s on a laptop CPU, about 6× the MLP's 590 s. Early stopping chose 34–61 epochs (the buggy run chose 56–85).
   - **Results** (%, [95% CI]):
 
     | rung | k = 8 top-3 | k = 8 small-leak top-3 | k = 31 top-1 | k = 31 top-3 | k = 31 small-leak top-3 |
     |---|---|---|---|---|---|
-    | `sigmatch_all` | **78.4** [75.7, 81.2] | **68.5** | 64.0 [59.4, 68.5] | 91.2 | 83.5 [78.4, 88.1] |
-    | `mlp` | 63.3 [60.2, 66.3] | 53.2 | 53.7 [48.9, 58.5] | 88.5 | 80.3 |
-    | `gbm` | 58.9 [56.1, 61.7] | 51.0 | 69.7 [65.2, 74.2] | 90.0 | 82.1 [77.1, 86.7] |
-    | `gat` | 63.0 [60.8, 65.3] | 57.0 [53.5, 60.2] | **75.4** [70.9, 79.5] | **96.4** [94.5, 98.1] | **93.6** [90.4, 96.8] |
+    | `sigmatch_all` | **78.4** [75.7, 81.2] | **68.5** [63.8, 72.7] | 64.0 [59.4, 68.5] | 91.2 [88.5, 93.8] | 83.5 [78.4, 88.1] |
+    | `mlp` | 63.3 [60.2, 66.3] | 53.2 [48.4, 57.8] | 53.7 [48.9, 58.5] | 88.5 [85.4, 91.6] | 80.3 [74.8, 84.9] |
+    | `gbm` | 58.9 [56.1, 61.7] | 51.0 [47.0, 55.0] | **69.7** [65.2, 74.2] | 90.0 [86.9, 92.8] | 82.1 [77.1, 86.7] |
+    | `gat` | 67.9 [65.4, 70.2] | 63.4 [59.4, 67.3] | 69.5 [64.4, 74.0] | **95.9** [93.8, 97.9] | **92.7** [89.0, 95.9] |
 
+  - **The comparisons are like-for-like.** Every rung at a given k is scored on the same 20 random sensor sets (`evaluate.random_masks`, seeded by evaluation seed 0 and k), and `sigmatch_all` at k = 8 uses those 8 sensors only; "all" means all 6 columns of S, not all junctions.
+  - **H1** (GAT vs the best non-learned rung, top-3, non-overlapping CIs), CV only:
+    - k = 8: **fails**, and the GAT is worse (67.9 vs 78.4, the CIs do not overlap).
+    - k = 12 (82.5 vs 83.9) and k = 16 (88.0 vs 86.5): the CIs overlap.
+    - k = 31: the CIs touch (GAT lower bound = `sigmatch_all` upper bound = 93.8), so not strictly non-overlapping.
   - **Reading:**
-    - **All 31 sensors:** the GAT is the best rung so far. Small-leak top-3 is 93.6 vs 83.5 for `sigmatch_all`, and the CIs do not overlap. Median distance is 316 m (vs 379 for `gbm`, 432 for `sigmatch_all`).
-    - **Top-1 at k = 31:** the GAT's 75.4 beats the GBM's 69.7, but the CIs overlap.
-    - **Biggest leaks:** in the top leak-flow tercile, top-1 is about the same as the GBM (82.1 vs 83.6).
-    - **At k = 8:** the GAT is no better than the MLP overall (63.0 vs 63.3). It is a few points better on small leaks (57.0 vs 53.2), and it is still far below `sigmatch_all` (78.4). Topology alone does not make up for few sensors. The S prior in M10 is aimed at this gap.
+    - **All 31 sensors:** the GAT has the best top-3 and small-leak top-3 (92.7 vs 83.5 for `sigmatch_all`, CIs do not overlap), and the shortest median distance, 362 m (vs 379 for `gbm`, 432 for `sigmatch_all`). Top-1 is level with the GBM (69.5 vs 69.7). In the top leak-flow tercile the GBM has the better top-1 (83.6 vs 77.1).
+    - **At k = 8:** the GAT is now ahead of the MLP (67.9 vs 63.3) and clearly ahead on small leaks (63.4 vs 53.2), but still well below `sigmatch_all` (78.4). The S prior in M10 is aimed at this gap.
+    - **Training variance is large.** The fixed fold 0 alone barely moved (k = 8 top-3 63.9 → 63.0), while the pooled numbers moved by several points and the chosen epochs changed a lot. Single-seed differences of a few points between learned rungs should not be read as real. M10 runs 3 seeds on its final variants.
 
 ### M10: Physics-input GAT and ablation
-- Add the S-based prior three ways: as node features, as edge features, and as a per-pipe prior logit. Use all three demand levels (M7: cross-level cosine 0.978 < 0.99, and `sigmatch_all` ≥ `sigmatch`), and ablate mid-only vs all levels.
-- Ablate plain vs physics, with CIs, broken down by leak type and by leak-flow tercile.
-- **Verify:** `uv run leaksense ablate --config configs/ablation_cpu.yaml` writes `reports/ablation.md`.
+- **Variants, fixed in advance** (SPEC §5 "Physics inputs"), all on the M9 model block:
+
+  | variant | change |
+  |---|---|
+  | `gat` | plain (M9) |
+  | `gat_noembed` | no learned node embedding |
+  | `gat_snode` | S as a node feature (pattern imputed from S) |
+  | `gat_sedge` | S as edge features (per-pipe cosines) |
+  | `gat_sprior` | S as a per-pipe prior logit (a · max cosine) |
+  | `gat_sprior_mid` | `gat_sprior` with the mid demand level only |
+
+- **Masking.** S enters only through the masked cosine (sensed junctions only, for both the pattern and S). `tests/test_gat.py` runs the M9 masking test on all 6 variants × transforms, checks that the cosine ignores unsensed rows of ΔH and of S, that it equals `sigmatch_all` for one window, and that `gat_sprior` with a zero head ranks exactly like `sigmatch_all`.
+- **Same everything.** `leaksense ablate` runs each (variant, model seed) through the `train` harness with the same splits, features, k list, evaluation seed and 20 draws, so every run sees the same sensor sets; the aggregator refuses runs that disagree. Comparisons are paired per case (same cases, same sensor sets), on per-case metrics averaged over model seeds, with a bootstrap over scenarios. The reference rung `sigmatch_all` is scored in the same run.
+- **Breakdowns:** overall, leak type, case kind, leak-flow tercile, pre-baseline only. The report gives an H2 verdict (paired top-3 vs `gat`, k ≤ 6) and an H1 re-check (k ≥ 8) for every variant.
+- **Seeds.** Stage 1: all 6 variants with model seed 0. Stage 2: seeds 1 and 2 for `gat` plus the 2 physics variants with the best seed-0 small-leak top-3 at k = 8 (the rule is fixed now; `ablate` prints the result).
+- **Compute** (laptop, 14 cores; plain GAT 683 s for fold 0 and 3,437 s for 5 folds):
+  - `configs/ablation_cpu.yaml`: fold 0, seed 0, 6 variants. About 70–90 min serial, about 30–40 min as 3 processes × 4 threads (`--variants … --no-aggregate`, then `--aggregate-only`). Writes `reports/ablation_fold0.{json,md}`. Its `gat` row must equal `reports/gat_fold0.json`.
+  - `configs/ablation_full.yaml`: 5 folds. Stage 1 (6 runs) and stage 2 (6 runs) are each about 6–7 h serial, 2.5–3 h in 3 parallel processes. On Kaggle (4 vCPU, speed measured in M12) each stage should fit one 12-h session, or split it with `--variants`. Runs are resumable: copy `reports/raw/ablation/` back and run `--aggregate-only`. Writes `reports/ablation.{json,md}`.
+- **Verify:** `uv run leaksense ablate --config configs/ablation_cpu.yaml` writes `reports/ablation_fold0.md`; then the full config, stages 1 and 2.
 
 ### M11: Sensor placement
 - Greedy forward selection over the 31 junctions. The masked model stays fixed, and each step maximizes top-3 accuracy on the inner-validation cases.

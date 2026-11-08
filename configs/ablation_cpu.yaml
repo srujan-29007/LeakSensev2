@@ -1,0 +1,47 @@
+# M10 development run: every variant on fold 0 only, model seed 0. Same features and model
+# block as gat_cpu.yaml, so the plain `gat` row must reproduce reports/gat_fold0.json exactly.
+# Run it in parallel with --variants (3 processes x 4 threads) and --no-aggregate, then
+# --aggregate-only. Writes reports/ablation_fold0.{json,md}.
+name: ablation_fold0
+seed: 0
+n_scenarios: null
+features:
+  slot: tod_weekday
+  baseline_days: 14
+  estimator: mean
+  window: 48
+  stride: 24
+  max_lag_days: 7
+  max_windows_per_case: 32
+  pre_guard_steps: 0
+  snr_holdout_days: 3.0
+model:
+  kind: gat
+  transform: scale_magnitude
+  hidden: 64
+  heads: 4
+  layers: 4
+  node_embed: 8
+  dropout: 0.1
+  lr: 0.001
+  weight_decay: 0.0001
+  batch_size: 256
+  max_epochs: 150
+  patience: 20
+  val_frac: 0.15
+  class_weight: inverse
+  k_min: 1
+  num_threads: 4
+  seed: 0
+ablation:
+  folds: [0]
+  seeds: [0]
+  reference: [sigmatch_all]
+  baseline: gat
+  variants:
+    gat: {}
+    gat_noembed: {node_embed: 0}
+    gat_snode: {physics: node}
+    gat_sedge: {physics: edge}
+    gat_sprior: {physics: prior}
+    gat_sprior_mid: {physics: prior, s_levels: mid}

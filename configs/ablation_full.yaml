@@ -1,0 +1,48 @@
+# M10 full ablation: 5 CV folds. Stage 1: every variant, model seed 0. Stage 2: seeds 1 and 2
+# for the final variants (gat + the 2 physics variants with the best seed-0 small-leak top-3 at
+# k = 8; `ablate` prints them), e.g. --variants gat,X,Y --seeds 1,2. Each (variant, seed) is
+# one resumable run, so stages can be split over processes or Kaggle sessions (copy
+# reports/raw/ablation back, then --aggregate-only). Writes reports/ablation.{json,md}.
+name: ablation
+seed: 0
+n_scenarios: null
+features:
+  slot: tod_weekday
+  baseline_days: 14
+  estimator: mean
+  window: 48
+  stride: 24
+  max_lag_days: 7
+  max_windows_per_case: 32
+  pre_guard_steps: 0
+  snr_holdout_days: 3.0
+model:
+  kind: gat
+  transform: scale_magnitude
+  hidden: 64
+  heads: 4
+  layers: 4
+  node_embed: 8
+  dropout: 0.1
+  lr: 0.001
+  weight_decay: 0.0001
+  batch_size: 256
+  max_epochs: 150
+  patience: 20
+  val_frac: 0.15
+  class_weight: inverse
+  k_min: 1
+  num_threads: 4
+  seed: 0
+ablation:
+  folds: null
+  seeds: [0]
+  reference: [sigmatch_all]
+  baseline: gat
+  variants:
+    gat: {}
+    gat_noembed: {node_embed: 0}
+    gat_snode: {physics: node}
+    gat_sedge: {physics: edge}
+    gat_sprior: {physics: prior}
+    gat_sprior_mid: {physics: prior, s_levels: mid}

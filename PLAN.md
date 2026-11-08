@@ -286,7 +286,7 @@ notebooks/kaggle_run.ipynb     # calls the CLI only, no logic
     - **Training variance is large.** The fixed fold 0 alone barely moved (k = 8 top-3 63.9 → 63.0), while the pooled numbers moved by several points and the chosen epochs changed a lot. Single-seed differences of a few points between learned rungs should not be read as real. M10 runs 3 seeds on its final variants.
 
 ### M10: Physics-input GAT and ablation
-- **Variants, fixed in advance** (SPEC §5 "Physics inputs"), all on the M9 model block:
+- **Variants** (SPEC §5 "Physics inputs"), all on the M9 model block. The first 6 were fixed before any M10 run; the last 2 were added after the fold-0 dev run (see below):
 
   | variant | change |
   |---|---|
@@ -296,15 +296,32 @@ notebooks/kaggle_run.ipynb     # calls the CLI only, no logic
   | `gat_sedge` | S as edge features (per-pipe cosines) |
   | `gat_sprior` | S as a per-pipe prior logit (a · max cosine) |
   | `gat_sprior_mid` | `gat_sprior` with the mid demand level only |
+  | `gat_snode_noembed` | `gat_snode` without the node embedding (added after fold 0) |
+  | `gat_sprior_noembed` | `gat_sprior` without the node embedding (added after fold 0) |
 
 - **Masking.** S enters only through the masked cosine (sensed junctions only, for both the pattern and S). `tests/test_gat.py` runs the M9 masking test on all 6 variants × transforms, checks that the cosine ignores unsensed rows of ΔH and of S, that it equals `sigmatch_all` for one window, and that `gat_sprior` with a zero head ranks exactly like `sigmatch_all`.
 - **Same everything.** `leaksense ablate` runs each (variant, model seed) through the `train` harness with the same splits, features, k list, evaluation seed and 20 draws, so every run sees the same sensor sets; the aggregator refuses runs that disagree. Comparisons are paired per case (same cases, same sensor sets), on per-case metrics averaged over model seeds, with a bootstrap over scenarios. The reference rung `sigmatch_all` is scored in the same run.
 - **Breakdowns:** overall, leak type, case kind, leak-flow tercile, pre-baseline only. The report gives an H2 verdict (paired top-3 vs `gat`, k ≤ 6) and an H1 re-check (k ≥ 8) for every variant.
-- **Seeds.** Stage 1: all 6 variants with model seed 0. Stage 2: seeds 1 and 2 for `gat` plus the 2 physics variants with the best seed-0 small-leak top-3 at k = 8 (the rule is fixed now; `ablate` prints the result).
-- **Compute** (laptop, 14 cores; plain GAT 683 s for fold 0 and 3,437 s for 5 folds):
-  - `configs/ablation_cpu.yaml`: fold 0, seed 0, 6 variants. About 70–90 min serial, about 30–40 min as 3 processes × 4 threads (`--variants … --no-aggregate`, then `--aggregate-only`). Writes `reports/ablation_fold0.{json,md}`. Its `gat` row must equal `reports/gat_fold0.json`.
-  - `configs/ablation_full.yaml`: 5 folds. Stage 1 (6 runs) and stage 2 (6 runs) are each about 6–7 h serial, 2.5–3 h in 3 parallel processes. On Kaggle (4 vCPU, speed measured in M12) each stage should fit one 12-h session, or split it with `--variants`. Runs are resumable: copy `reports/raw/ablation/` back and run `--aggregate-only`. Writes `reports/ablation.{json,md}`.
-- **Verify:** `uv run leaksense ablate --config configs/ablation_cpu.yaml` writes `reports/ablation_fold0.md`; then the full config, stages 1 and 2.
+- **Fold-0 dev run — DONE** (`reports/ablation_fold0.md`, 84 cases, model seed 0, commit `ba49c3f`). Directional only:
+  - The plain `gat` row reproduced `reports/gat_fold0.json` exactly.
+  - **Removing the learned node embedding helped more than any physics input:** paired top-3 vs `gat` was +4.5 to +8.9 points at every k from 2 to 16, CIs above 0. `gat` early-stopped at 34 epochs, `gat_noembed` at 119.
+  - **Physics at k ≤ 6 (H2):** `gat_snode` (+8 to +14 points), `gat_sprior` and `gat_sprior_mid` (+4.5 to +8.9) were better than `gat` at every k ≤ 6; `gat_sedge` at k = 3–6 only. None helped at k ≥ 8, and none reached `sigmatch_all` at k = 8.
+  - `gat_sprior` and `gat_sprior_mid` agreed within 1 point everywhere: the demand levels make no difference here.
+  - Two runs took about 11,000–13,000 s instead of about 1,000 s (the laptop was idle or asleep); the times are not model costs.
+- **Revised after the fold-0 dev run (2026-11-08), before any full-run result existed:**
+  - **Variant list:** + `gat_snode_noembed` and `gat_sprior_noembed` (physics without the node embedding), because every physics variant kept the embedding that fold 0 suggests hurts. 8 variants in `configs/ablation_full.yaml`.
+  - **Stage-2 rule replaced.** The old rule (best seed-0 small-leak top-3 at k = 8) used outer-fold results, would have picked two near-identical variants, and could not pick `gat_noembed`.
+  - **Runs are saved per (variant, seed, fold)** as each fold finishes, so an interrupted run resumes from the next fold. The aggregator leaves out (and lists) any (variant, seed) missing a fold.
+- **Stage 1:** all 8 variants, model seed 0, 5 folds.
+- **Stage-2 selection rule (inner validation only; implemented in `ablate.stage2_selection`):**
+  - Always `gat` and `gat_noembed`, plus the **2 physics variants** (any `physics` other than `none`, with or without the embedding) with the highest inner-validation score.
+  - **Data:** the seed-0 run of each variant. In each of the 5 outer folds, the net chosen on that fold's inner-validation split (the early-stopping net, before the refit on the whole training fold) is scored on that fold's inner-validation cases (about 15% of each pipe's training scenarios). The outer-fold cases are never used. The sensor sets are the harness's 20 seeded random sets per k (`evaluate.random_masks`, seed 0).
+  - **Metric:** case-level top-3 (ties scored exactly, as in SPEC §6), per k. For each k, the case-weighted mean over the 5 folds; the score is the mean of that over **k ∈ {2, 3, 4, 6, 8}**.
+  - **Tie-break**, in order: (1) the score, compared to 0.1 point; (2) inner-validation small-leak top-3 at k = 8, case-weighted over folds, to 0.1 point; (3) fewer added inputs: `prior` < `node` < `edge`, and mid-only levels before all levels; (4) variant name.
+- **Stage 2:** seeds 1 and 2 for the 4 selected variants, 5 folds.
+- **Criterion for adopting `node_embed: 0` as the default (M11 onwards):** with seeds 0, 1 and 2 of both `gat` and `gat_noembed` over all 5 folds, take the paired top-3 difference `gat_noembed` − `gat` (all cases, per-case metrics averaged over the 3 seeds, bootstrap over scenarios). **Adopt** if its 95% CI lower bound is above 0 at k = 8 **and** its point estimate is ≥ 0 at every k in {2, 3, 4, 6, 8, 12, 16, 31}. Otherwise keep the embedding. Implemented in `ablate.noembed_adoption` and reported in `reports/ablation.md`. If it is adopted, the noembed form of the chosen physics variant is the M11 model when both forms were run.
+- **Compute** (laptop, 14 cores; plain GAT 683 s for fold 0 and 3,437 s for 5 folds). Stage 1 is 40 fold-runs, about 8–9 h serial, about 4.5 h as 2 workers × 4 threads. Stage 2 is 4 × 2 × 5 = 40 fold-runs, about the same. On Kaggle (4 vCPU, measured in M12), each stage is 1–2 sessions; split it with `--variants` and copy `reports/raw/ablation/` back.
+- **Verify:** `uv run leaksense ablate --config configs/ablation_full.yaml --variants … --no-aggregate` (stage 1, then stage 2 with `--seeds 1,2`), then `--aggregate-only` writes `reports/ablation.{json,md}`. The fold-0 dev run is `configs/ablation_cpu.yaml` → `reports/ablation_fold0.md`; its raw runs predate the per-fold layout.
 
 ### M11: Sensor placement
 - Greedy forward selection over the 31 junctions. The masked model stays fixed, and each step maximizes top-3 accuracy on the inner-validation cases.

@@ -1,8 +1,10 @@
-# M10 full ablation: 5 CV folds. Stage 1: every variant, model seed 0. Stage 2: seeds 1 and 2
-# for the final variants (gat + the 2 physics variants with the best seed-0 small-leak top-3 at
-# k = 8; `ablate` prints them), e.g. --variants gat,X,Y --seeds 1,2. Each (variant, seed) is
-# one resumable run, so stages can be split over processes or Kaggle sessions (copy
-# reports/raw/ablation back, then --aggregate-only). Writes reports/ablation.{json,md}.
+# M10 full ablation: 5 CV folds. Variant list revised after the fold-0 dev run
+# (reports/ablation_fold0.md): + gat_snode_noembed, gat_sprior_noembed. Stage 1: every variant,
+# model seed 0. Stage 2: seeds 1 and 2 for the final variants, picked on inner validation only
+# (rule in PLAN.md M10; `ablate` prints them), e.g. --variants gat,gat_noembed,X,Y --seeds 1,2.
+# Each (variant, seed, fold) is saved as soon as it finishes, so runs resume per fold and can be
+# split over processes or Kaggle sessions (copy reports/raw/ablation back, then
+# --aggregate-only). Writes reports/ablation.{json,md}.
 name: ablation
 seed: 0
 n_scenarios: null
@@ -34,6 +36,7 @@ model:
   k_min: 1
   num_threads: 4
   seed: 0
+  inner_eval_ks: "2,3,4,6,8"  # stage-2 selection scores (inner validation)
 ablation:
   folds: null
   seeds: [0]
@@ -46,3 +49,5 @@ ablation:
     gat_sedge: {physics: edge}
     gat_sprior: {physics: prior}
     gat_sprior_mid: {physics: prior, s_levels: mid}
+    gat_snode_noembed: {physics: node, node_embed: 0}
+    gat_sprior_noembed: {physics: prior, node_embed: 0}

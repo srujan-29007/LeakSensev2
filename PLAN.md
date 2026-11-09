@@ -313,6 +313,35 @@ notebooks/kaggle_run.ipynb     # calls the CLI only, no logic
   - **Stage-2 rule replaced.** The old rule (best seed-0 small-leak top-3 at k = 8) used outer-fold results, would have picked two near-identical variants, and could not pick `gat_noembed`.
   - **Runs are saved per (variant, seed, fold)** as each fold finishes, so an interrupted run resumes from the next fold. The aggregator leaves out (and lists) any (variant, seed) missing a fold.
 - **Stage 1:** all 8 variants, model seed 0, 5 folds.
+- **Stage 1 — DONE** (`reports/ablation.md`, 419 CV cases, 41 of 41 runs, model seed 0, runs at `522e253`/`ef489c7`). **Single seed:** the CIs are bootstraps over scenarios and do not include training-seed variance, which M9 showed can move pooled numbers by several points. Top-3, all cases (%):
+
+  | variant | k=2 | k=3 | k=4 | k=6 | k=8 | k=12 | k=16 | k=31 |
+  |---|---|---|---|---|---|---|---|---|
+  | `gat` | 17.4 | 26.9 | 32.6 | 51.1 | 67.9 | 82.5 | 88.0 | 95.9 |
+  | `gat_noembed` | 19.5 | 29.4 | 37.3 | 53.8 | 68.4 | 83.5 | 89.2 | 97.6 |
+  | `gat_snode` | 26.5 | 39.3 | 46.8 | 60.2 | 71.5 | 83.5 | 88.2 | 95.2 |
+  | `gat_sedge` | 23.4 | 34.7 | 42.7 | 57.8 | 70.3 | 83.3 | 88.1 | 94.5 |
+  | `gat_sprior` | 21.5 | 32.5 | 38.7 | 55.0 | 68.3 | 82.3 | 87.6 | 95.7 |
+  | `gat_sprior_mid` | 21.5 | 33.3 | 39.6 | 54.9 | 69.0 | 82.8 | 87.6 | 95.0 |
+  | `gat_snode_noembed` | 29.2 | 43.3 | 49.2 | 64.7 | 76.3 | 87.0 | 92.0 | 97.6 |
+  | `gat_sprior_noembed` | 22.6 | 35.1 | 41.7 | 57.7 | 69.5 | 84.0 | 89.8 | 97.9 |
+  | `sigmatch_all` | 34.2 | 51.5 | 57.9 | 70.0 | 78.4 | 83.9 | 86.5 | 91.2 |
+
+  Paired top-3 differences below are in points, with 95% CIs; "pooled" is the per-case mean over the listed k. The pooled and per-fold figures were computed from `reports/raw/ablation/*.parquet` with the aggregator's bootstrap (1000 resamples, seed 0), and the per-k values match `reports/ablation.md`.
+  - **`gat_noembed` − `gat`:** pooled k = 2–16: +2.1 [+0.9, +3.3]. Better in 3 of 5 folds (f0 +6.4, f1 −0.5, f2 −0.4, f3 +1.9, f4 +3.1). At k = 8: +0.5 [−1.3, +2.4]. Fold 0 carries the effect: its CI is above 0 at every k from 2 to 16. At k = 8, fold 1 is −3.5 [−6.4, −0.4]. Fold 0 is also the dev fold on which the effect was first seen. **Adoption criterion: pending** (it needs seeds 0–2). On seed 0 alone it would fail: the k = 8 lower bound is −1.3, not above 0. Every point estimate is ≥ 0.
+  - **H2, physics vs its no-physics twin:**
+    - `gat_snode` − `gat`: k = 2–6 +11.2 [+9.4, +13.2]. Better in 5 of 5 folds, and each fold's CI is above 0 at every k ≤ 6. At k = 8, 12, 16, 31: +1.0 [+0.0, +2.1], better in 4 of 5 folds, no fold's CI above 0. On small leaks it is worse at k = 8–16 (k = 8: −3.2 [−5.6, −0.7]).
+    - `gat_snode_noembed` − `gat_noembed`: k = 2–6 +11.6 [+9.8, +13.3]. Better in 5 of 5 folds, and each fold's CI is above 0 at every k ≤ 6. At k = 8, 12, 16, 31: +3.5 [+2.7, +4.4], better in 5 of 5 folds. This comes from k = 8–16 (k = 8: +7.9 [+6.4, +9.6]); at k = 31 it is +0.0.
+    - **H2 is supported on seed 0, in every fold.** Every physics variant's CI vs `gat` is above 0 at every k ≤ 6.
+  - **H1, best learned (`gat_snode_noembed`) vs `sigmatch_all`:**
+    - k = 8: 76.3 vs 78.4, paired −2.1 [−4.5, +0.3]. It is below in all 5 folds. **Not met.**
+    - k = 12: 87.0 vs 83.9, paired +3.1 [+1.0, +5.2]. The marginal CIs overlap, so **not met** under SPEC's non-overlap rule.
+    - k = 16: 92.0 [90.3, 93.4] vs 86.5 [83.9, 89.0]. **Met.** Above in 5 of 5 folds.
+    - k = 31: 97.6 vs 91.2. **Met.** Above in 5 of 5 folds.
+    - H1 is also met at k = 31 by `gat_noembed` and `gat_sprior_noembed`. No other variant meets it at any k.
+    - `gat_snode_noembed` was added after the fold-0 dev run and is the best of 8 variants picked on these same CV cases, so this H1 result is optimistic.
+  - **Stage-2 rule** (inner validation; scores 53.3 `gat_snode`, 52.4 `gat_snode_noembed`, 49.3 `gat_sedge`, ...) picked **`gat`, `gat_noembed`, `gat_snode`, `gat_snode_noembed`**.
+  - **Timing:** wall-clock times include sleep. Four fold-runs took 8,600–37,200 s instead of about 1,000 s (`gat_noembed` f0, `gat_sedge` f4, `gat_snode` f0, `gat_snode_noembed` f1). Runs on 2026-11-08 used 2 workers (about 13–35 s/epoch). Runs on 2026-11-09 were serial (about 8–10 s/epoch).
 - **Stage-2 selection rule (inner validation only; implemented in `ablate.stage2_selection`):**
   - Always `gat` and `gat_noembed`, plus the **2 physics variants** (any `physics` other than `none`, with or without the embedding) with the highest inner-validation score.
   - **Data:** the seed-0 run of each variant. In each of the 5 outer folds, the net chosen on that fold's inner-validation split (the early-stopping net, before the refit on the whole training fold) is scored on that fold's inner-validation cases (about 15% of each pipe's training scenarios). The outer-fold cases are never used. The sensor sets are the harness's 20 seeded random sets per k (`evaluate.random_masks`, seed 0).

@@ -252,6 +252,20 @@ def _train(
 # ----------------------------------------------------------------------------- model
 
 
+def net_case_scores(
+    net: nn.Module, transform: str, xs: list[np.ndarray], mask: np.ndarray
+) -> np.ndarray:
+    """Per-case scores (n_cases, n_classes): the mean over a case's windows of log-probs."""
+    lens = np.array([len(x) for x in xs])
+    x = np.concatenate(xs).astype(np.float32)
+    m = np.broadcast_to(np.asarray(mask, bool), x.shape)
+    with torch.no_grad():
+        xin = torch.from_numpy(encode(x, m, transform).astype(np.float32))
+        lp = torch.log_softmax(predict_logits(net, xin), dim=1).numpy()
+    starts = np.concatenate([[0], np.cumsum(lens)[:-1]])
+    return np.add.reduceat(lp, starts, axis=0) / lens[:, None]
+
+
 def inner_scores(
     net: nn.Module,
     transform: str,
@@ -308,6 +322,10 @@ class MaskedMLP:
         self.base, self.grid = parse_config(model_cfg or {}, self.config_cls)
         self.cfg = self.base
         self.net: nn.Module | None = None
+        # the early-stopping net trained on inner-train only (before the refit) and the rows of
+        # the last ``fit``'s ``train`` it was validated on; M11 placement scores it there
+        self.inner_net: nn.Module | None = None
+        self.inner_val_idx: np.ndarray = np.zeros(0, dtype=int)
         self.history: list[dict] = []  # one entry per fit (fold)
 
     def _make_net(self, cfg: Any, d_in: int) -> nn.Module:
@@ -341,6 +359,10 @@ class MaskedMLP:
             pick = {"cfg": cand[0], "net": None, "epochs": cand[0].max_epochs, "val_loss": None}
 
         cfg = pick["cfg"]
+        self.inner_net = pick["net"]
+        self.inner_val_idx = va_idx if pick["net"] is not None else np.zeros(0, dtype=int)
+        if self.inner_net is not None:
+            self.inner_net.eval()
         inner_eval = {}
         if cfg.inner_eval_ks and pick["net"] is not None:  # before the refit overwrites it
             inner_eval = inner_scores(
@@ -383,14 +405,7 @@ class MaskedMLP:
     def batch_scores(self, xs: list[np.ndarray], mask: np.ndarray) -> np.ndarray:
         if self.net is None:
             raise RuntimeError(f"{type(self).__name__}.fit was not called")
-        lens = np.array([len(x) for x in xs])
-        x = np.concatenate(xs).astype(np.float32)
-        m = np.broadcast_to(np.asarray(mask, bool), x.shape)
-        with torch.no_grad():
-            xin = torch.from_numpy(encode(x, m, self.cfg.transform).astype(np.float32))
-            lp = torch.log_softmax(predict_logits(self.net, xin), dim=1).numpy()
-        starts = np.concatenate([[0], np.cumsum(lens)[:-1]])
-        return np.add.reduceat(lp, starts, axis=0) / lens[:, None]
+        return net_case_scores(self.net, self.cfg.transform, xs, mask)
 
     def case_scores(self, x: np.ndarray, mask: np.ndarray) -> np.ndarray:
         return self.batch_scores([x], mask)[0]

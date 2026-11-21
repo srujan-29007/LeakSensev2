@@ -367,7 +367,7 @@ notebooks/kaggle_run.ipynb     # calls the CLI only, no logic
   - **H1, `gat_snode_noembed` vs `sigmatch_all`:** holds at k = 16 and 31. At k = 8 the paired difference is −2.1 [−4.2, +0.1] and the marginal CIs overlap; at k = 12 it is +3.2 [+1.2, +5.3] but the marginal CIs overlap. On small leaks at k = 8 the two are level (+0.1 [−3.6, +3.4]).
   - **M11 model: `gat_snode_noembed`, chosen post hoc.** Read literally, the rules above give `gat_snode` (the embedding was not dropped). `gat_snode_noembed` was chosen instead after seeing these CV results, because its 3-seed top-3 is above `gat_snode` at every k (by +2.5 to +5.4 points at k = 2–8, from the paired differences vs `gat`; no CI was computed for this pair). It is also the best of 8 variants on the same CV cases, so its CV numbers are optimistic. The locked test (M13) is the unbiased check, and FINAL.md must state this choice.
 
-### M11: Sensor placement
+### M11: Sensor placement — DONE
 - Greedy forward selection over the 31 junctions. The masked model stays fixed, and each step maximizes top-3 accuracy on the inner-validation cases.
 - **Comparisons:**
   - 100 random placements per k
@@ -380,6 +380,34 @@ notebooks/kaggle_run.ipynb     # calls the CLI only, no logic
 - **Verify:**
   - `uv run leaksense place --config configs/place_cpu.yaml` writes `reports/placement.json` and a curve PNG.
   - A test checks that greedy placement is deterministic for a fixed seed.
+- **Built:** `placement.py` (the greedy selectors) and `place_cmds.py` (`leaksense place`), with `configs/place_cpu.yaml`. The model is `gat_snode_noembed`, model seed 0 (see M10).
+  - **No leakage in the greedy.** `fit` refits on the whole training fold, inner-validation cases included, so the greedy uses the early-stopping net from before the refit (`MaskedMLP.inner_net`), scored on the inner-validation cases (`inner_val_idx`). The outer fold is scored with the refit net.
+  - **Learned greedy:** top-3 with tie-aware scoring; ties broken by the mean true-class log-prob, then the lowest junction. The sets are nested.
+  - **Coverage greedy:** physics only. Each S column is scaled to max |·| = 1; the greedy maximises the mean over columns of the largest |S| among the chosen junctions. One set for every fold.
+  - **Random:** 100 seeded sets per k, the same in every fold.
+  - Every set is also scored with `sigmatch_all`.
+  - **Final placement:** the same greedy on a model fit on all 419 CV cases, for M13 and M14.
+  - Each fold is saved to `reports/raw/placement/` as it finishes.
+  - 7 tests in `tests/test_placement.py`: the vectorised top-k equals `case_metrics`; the greedy picks the informative junction, is nested and deterministic with lowest-junction ties; the coverage order on a hand-made S; `fit` keeps the inner net and its validation rows; and a CLI test (runs a fold, resumes, reports, never sees the test scenario).
+- **Verified** (`reports/placement.md`, 419 CV cases, commit `ed6b063`; marked dirty only by an uncommitted `CLAUDE.md` edit). 9,985 s on the laptop: 1,040–2,960 s per fold and 1,429 s for the final fit.
+  - **Sanity check:** the random-set mean at k = 8 is 76.2%, the same as the ablation's seed-0 `gat_snode_noembed` k = 8 number (random sets in both).
+  - **Inner-validation size:** about 35 cases per fold (46 for the final fit), not the 80 assumed above. The rare-pipe rule keeps pipes with fewer than 7 training cases out of inner validation.
+  - **Results**, top-3 (%):
+
+    | k | greedy | coverage | random mean [p5–p95] | greedy − random | small leaks: greedy / random |
+    |---|---|---|---|---|---|
+    | 2 | 33.9 | 34.8 | 29.3 [13.8–39.6] | +4.6 [+1.1, +8.2] | 21.6 / 22.1 |
+    | 4 | 67.3 | 58.9 | 51.0 [35.7–61.9] | +16.3 [+12.6, +20.2] | 59.6 / 41.9 |
+    | 8 | 86.9 [83.8, 90.2] | 72.6 | 76.2 [69.2–83.3] | +10.6 [+7.6, +13.5] | 80.7 / 68.4 |
+    | 16 | 95.2 | 93.3 | 91.9 [86.4–95.7] | +3.3 [+1.8, +4.8] | 93.1 / 87.6 |
+
+  - **Reading:**
+    - The learned greedy beats the mean random placement at every k (CI above 0) except small leaks at k = 2. At k = 4 and k = 8 it beats every one of the 100 random sets.
+    - The coverage greedy is no better than random for this model at k = 6–12, and worse at k = 8 (72.6 vs 76.2). Covering the sensitivity matrix does not pick sensors the GAT can use.
+    - **Placement-matched comparison with physics:** `sigmatch_all` also gains from placement. With the coverage sets it reaches 85.9 at k = 8, and with the learned greedy sets 83.7. So at k = 8 the best placed GAT (86.9) and the best placed `sigmatch_all` (85.9) are close. The model's lead over physics is clear only with sensors placed at random. M13 should report both.
+    - **Stability is low.** Mean pairwise Jaccard of the greedy sets across folds is 0.22 at k = 8, against 0.16 for random sets. Junctions 28, 16 and 9 recur (in 4 of 5 folds at k = 8). With about 35 inner cases per fold, the exact sets are noisy, even though each one scores well on its outer fold.
+    - **The final greedy saturates.** Inner top-3 reaches 95.7% at k = 8 on 46 cases, so its picks at k = 12 and k = 16 are made by the true-class-score tie-break alone.
+  - **Final placement** (for M13 and M14), in order: 6, 28, 14, 27, 23, 31, 12, 29, 5, 8, 11, 30, 13, 2, 4, 20.
 
 ### M12: Full run on Kaggle (optional)
 - `notebooks/kaggle_run.ipynb` sets `LEAKSENSE_DATA_DIR` to the Kaggle input path, installs the repo, and runs the CLI with `configs/full.yaml`. The notebook contains no logic of its own.

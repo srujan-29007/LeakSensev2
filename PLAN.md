@@ -285,7 +285,7 @@ notebooks/kaggle_run.ipynb     # calls the CLI only, no logic
     - **At k = 8:** the GAT is now ahead of the MLP (67.9 vs 63.3) and clearly ahead on small leaks (63.4 vs 53.2), but still well below `sigmatch_all` (78.4). The S prior in M10 is aimed at this gap.
     - **Training variance is large.** The fixed fold 0 alone barely moved (k = 8 top-3 63.9 → 63.0), while the pooled numbers moved by several points and the chosen epochs changed a lot. Single-seed differences of a few points between learned rungs should not be read as real. M10 runs 3 seeds on its final variants.
 
-### M10: Physics-input GAT and ablation
+### M10: Physics-input GAT and ablation — DONE
 - **Variants** (SPEC §5 "Physics inputs"), all on the M9 model block. The first 6 were fixed before any M10 run; the last 2 were added after the fold-0 dev run (see below):
 
   | variant | change |
@@ -351,6 +351,21 @@ notebooks/kaggle_run.ipynb     # calls the CLI only, no logic
 - **Criterion for adopting `node_embed: 0` as the default (M11 onwards):** with seeds 0, 1 and 2 of both `gat` and `gat_noembed` over all 5 folds, take the paired top-3 difference `gat_noembed` − `gat` (all cases, per-case metrics averaged over the 3 seeds, bootstrap over scenarios). **Adopt** if its 95% CI lower bound is above 0 at k = 8 **and** its point estimate is ≥ 0 at every k in {2, 3, 4, 6, 8, 12, 16, 31}. Otherwise keep the embedding. Implemented in `ablate.noembed_adoption` and reported in `reports/ablation.md`. If it is adopted, the noembed form of the chosen physics variant is the M11 model when both forms were run.
 - **Compute** (laptop, 14 cores; plain GAT 683 s for fold 0 and 3,437 s for 5 folds). Stage 1 is 40 fold-runs, about 8–9 h serial, about 4.5 h as 2 workers × 4 threads. Stage 2 is 4 × 2 × 5 = 40 fold-runs, about the same. On Kaggle (4 vCPU, measured in M12), each stage is 1–2 sessions; split it with `--variants` and copy `reports/raw/ablation/` back.
 - **Verify:** `uv run leaksense ablate --config configs/ablation_full.yaml --variants … --no-aggregate` (stage 1, then stage 2 with `--seeds 1,2`), then `--aggregate-only` writes `reports/ablation.{json,md}`. The fold-0 dev run is `configs/ablation_cpu.yaml` → `reports/ablation_fold0.md`; its raw runs predate the per-fold layout.
+- **Stage 2 — DONE** (`reports/ablation.md`, 61 of 61 runs, seeds 0–2 for the 4 final variants, aggregated at `75ea277`; the 29 runs left after stage 1 took 33,441 s serial on the laptop). Top-3, all cases, per-case metrics averaged over 3 seeds (%):
+
+  | variant | k=2 | k=4 | k=8 | k=16 | k=31 | small leaks, k=8 |
+  |---|---|---|---|---|---|---|
+  | `gat` | 17.6 | 32.7 | 68.1 | 88.1 | 95.9 | 62.2 |
+  | `gat_noembed` | 19.1 | 36.6 | 68.4 | 89.4 | 97.5 | 63.4 |
+  | `gat_snode` | 26.6 | 46.0 | 70.9 | 87.8 | 95.7 | 60.3 |
+  | `gat_snode_noembed` | 29.1 | 49.2 | 76.4 [74.2, 78.4] | 92.0 | 97.5 | 68.6 |
+  | `sigmatch_all` | 34.2 | 57.9 | 78.4 [75.7, 81.2] | 86.5 | 91.2 | 68.5 |
+
+  - **Seed variance is small:** the min–max over seeds is at most about 1.5 points for every cell above. The stage-1 ranking holds.
+  - **Learned node embedding: kept** (the rule above). `gat_noembed` − `gat` at k = 8 is +0.2 [−1.3, +1.7], so the lower bound is not above 0; the point estimates are ≥ 0 at every k.
+  - **H2:** holds for every physics variant (CI above 0 at every k ≤ 6). `gat_snode_noembed` − `gat` at k = 2–8: +11.5, +15.4, +16.5, +13.5, +8.2.
+  - **H1, `gat_snode_noembed` vs `sigmatch_all`:** holds at k = 16 and 31. At k = 8 the paired difference is −2.1 [−4.2, +0.1] and the marginal CIs overlap; at k = 12 it is +3.2 [+1.2, +5.3] but the marginal CIs overlap. On small leaks at k = 8 the two are level (+0.1 [−3.6, +3.4]).
+  - **M11 model: `gat_snode_noembed`, chosen post hoc.** Read literally, the rules above give `gat_snode` (the embedding was not dropped). `gat_snode_noembed` was chosen instead after seeing these CV results, because its 3-seed top-3 is above `gat_snode` at every k (by +2.5 to +5.6 points at k = 2–8, from the paired differences vs `gat`; no CI was computed for this pair). It is also the best of 8 variants on the same CV cases, so its CV numbers are optimistic. The locked test (M13) is the unbiased check, and FINAL.md must state this choice.
 
 ### M11: Sensor placement
 - Greedy forward selection over the 31 junctions. The masked model stays fixed, and each step maximizes top-3 accuracy on the inner-validation cases.

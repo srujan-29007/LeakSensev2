@@ -160,3 +160,124 @@ def test_cli_place_runs_resumes_and_reports(place_env):
     assert not df["case_id"].str.startswith("S004").any()
     assert (tmp_path / "rep" / "placement_curve.png").stat().st_size > 0
     assert "Sensor placement" in (tmp_path / "rep" / "placement.md").read_text(encoding="utf-8")
+
+
+def test_train_masks_fixed_set_and_unchanged_random_stream():
+    from dataclasses import replace
+
+    from leaksense.models.mlp import MLPConfig, random_k_masks, train_masks
+
+    cfg = MLPConfig()
+    a = train_masks(50, 31, cfg, np.random.default_rng(3), 1)
+    b = random_k_masks(50, 31, 1, np.random.default_rng(3))
+    assert (a == b).all()  # no fixed set: the same random stream as before H4
+    m = train_masks(5, 31, replace(cfg, fixed_sensors="4,26"), np.random.default_rng(3), 1)
+    assert (m.sum(axis=1) == 2).all() and m[:, [4, 26]].all()
+    with pytest.raises(ValueError):
+        MLPConfig(fixed_sensors="3,3")
+
+
+def test_cli_fixed_budget_pairs_with_the_placement_run(place_env):
+    from leaksense.cli import main
+
+    tmp_path, args = place_env
+    assert main(args) == 0
+    fixed = [a if a != str(tmp_path / "runs") else str(tmp_path / "fixed") for a in args]
+    fixed = ["fixed-budget", *fixed[1:], "--placement-runs", str(tmp_path / "runs")]
+    fixed += ["--k", "1,2"]
+    assert main(fixed) == 0
+    rep = json.loads((tmp_path / "rep" / "fixed_budget.json").read_text())
+    assert rep["ks"] == [1, 2] and rep["h4"] in {"yes", "partly", "no"}
+    # the masked column is the M11 greedy-set score on the same cases
+    pl = json.loads((tmp_path / "rep" / "placement.json").read_text())
+    want = pl["results"]["model"]["2"]["overall"]["greedy"]["top3"]["value"]
+    assert rep["results"]["2"]["overall"]["masked"]["top3"]["value"] == pytest.approx(want)
+    run = json.loads((tmp_path / "fixed" / "fixed__k2_f0.json").read_text())
+    assert run["sensors_idx"] == pl["folds"]["0"]["greedy_order_idx"][:2]
+    assert "H4" in (tmp_path / "rep" / "fixed_budget.md").read_text(encoding="utf-8")
+
+
+FINAL = """model:
+  kind: gat
+  max_epochs: 2
+  hidden: 8
+  heads: 2
+  layers: 2
+  node_embed: 0
+  physics: node
+  val_frac: 0.0
+  num_threads: 1
+final:
+  ks: [1, 2, 4]
+  draws: 3
+  headline_k: 2
+  nonlearned: [chance, sigmatch_all]
+  learned:
+    gat_snode: {seeds: [0, 1]}
+    gat_plain: {seeds: [0], overrides: {physics: none}}
+  headline: gat_snode
+  plain: gat_plain
+  placement: {runs: RUNS, name: placement}
+  fixed_ks: [2]
+  cv_reports: REP
+"""
+
+
+def test_cli_final_report_scores_the_locked_test_once(place_env):
+    from leaksense.cli import main
+
+    tmp_path, args = place_env
+    assert main(args) == 0  # M11 placement, with the final set
+    base = (tmp_path / "cfg.yaml").read_text().split("model:")[0]
+    cfg = tmp_path / "final.yaml"
+    final = FINAL.replace("RUNS", str(tmp_path / "runs")).replace("REP", str(tmp_path / "rep"))
+    cfg.write_text(base + final)
+    i = args.index("--config")
+    common = args[1:i] + ["--config", str(cfg)] + args[i + 2 :]
+    j = common.index("--runs-dir")
+    common[j + 1] = str(tmp_path / "final_runs")
+    k = common.index("--reports-dir")
+    common[k + 1] = str(tmp_path / "rep_final")
+    run = ["final-report", *common]
+
+    assert main(run) != 0  # scoring the locked test needs an explicit flag
+    assert not (tmp_path / "final_runs").exists()
+    assert main([*run, "--confirm-locked-test"]) == 0
+    rep = json.loads((tmp_path / "rep_final" / "final.json").read_text())
+    assert rep["mode"] == "test" and not rep["units_missing"]
+    assert rep["test_set"]["n_cases"] == 1
+    df = pd.read_parquet(tmp_path / "final_runs" / "ml__gat_snode_s0.parquet")
+    assert set(df["case_id"]) == {"S004-pure"} or df["case_id"].str.startswith("S004").all()
+    assert set(df["method"]) == {"ladder", "greedy", "coverage", "random"}
+    assert rep["results"]["gat_snode"]["seeds"] == [0, 1]
+    assert "H4" in rep["hypotheses"] and rep["hypotheses"]["H4"]["per_k"]
+    md = (tmp_path / "rep_final" / "FINAL.md").read_text(encoding="utf-8")
+    assert "locked test" in md and "Limitations" in md
+    stamp = (tmp_path / "final_runs" / "nl__chance.json").stat().st_mtime_ns
+
+    assert main(run) == 0  # all units done: only the report is rebuilt, no flag needed
+    assert (tmp_path / "final_runs" / "nl__chance.json").stat().st_mtime_ns == stamp
+    cfg.write_text(base + final.replace("draws: 3", "draws: 4"))
+    assert main([*run, "--confirm-locked-test"]) != 0  # a changed config never re-scores test
+
+
+def test_cli_final_report_stand_in_never_reads_the_test_fold(place_env):
+    from leaksense.cli import main
+
+    tmp_path, args = place_env
+    assert main(args) == 0
+    base = (tmp_path / "cfg.yaml").read_text().split("model:")[0]
+    cfg = tmp_path / "final.yaml"
+    final = FINAL.replace("RUNS", str(tmp_path / "runs")).replace("REP", str(tmp_path / "rep"))
+    cfg.write_text(base + final)
+    i = args.index("--config")
+    common = args[1:i] + ["--config", str(cfg)] + args[i + 2 :]
+    j = common.index("--runs-dir")
+    common[j + 1] = str(tmp_path / "standin")
+    assert main(["final-report", *common, "--stand-in-fold", "0"]) == 0
+    rep = json.loads((tmp_path / "standin" / "report" / "final.json").read_text())
+    assert rep["mode"] == "standin_f0" and rep["n_train_cases"] == 1
+    for p in (tmp_path / "standin").glob("*.parquet"):
+        assert not pd.read_parquet(p)["case_id"].str.startswith("S004").any()
+    md = (tmp_path / "standin" / "report" / "FINAL.md").read_text(encoding="utf-8")
+    assert "Stand-in run" in md

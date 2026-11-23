@@ -158,9 +158,9 @@ How every metric is reported:
 - Mean ± 95% bootstrap CI over cases, resampled by scenario and pooled across the 5 outer CV folds.
 - **Ties are scored exactly.** If the true pipe shares its score with others, top-k is the expected value under random tie-breaking: clip((k − n_better) / n_tied, 0, 1). Distances for a tied top-1 are averaged over the tied set. So the chance rung scores exactly k/33.
 - **Budgets k < 31 before placement exists (M6–M10):** each k is scored over 20 seeded random sensor sets, and the same sets are used for every rung. Per-case metrics are averaged over the sets, and the spread across sets (p5 / p50 / p95) is reported. From M11 on, greedy and heuristic placements are scored too.
-- **Tercile edges** (leak flow, SNR) are computed once on the evaluated case set and recorded in each report, so every rung uses the same groups.
+- **Tercile edges** (leak flow, SNR) are computed once on the evaluated case set and recorded in each report, so every rung uses the same groups. The locked test (M13) reuses the CV edges, so its groups match the CV reports.
 - Broken down four ways: **overall**, **by leak type** (small / big), **by case kind** (pure / solo), and **by baseline kind** (pre vs post/combined). A post baseline uses data from after the leak, which an operator would not have in real time, so headline numbers are also shown for pre-baseline cases only.
-- The locked test fold is evaluated exactly once, in M13.
+- The locked test fold is evaluated exactly once, in M13. Every rung is fit once on all CV cases and scored on the test cases with the same seeded random sensor sets as CV. The command refuses to re-score a test unit after its config changes.
 
 ### Required deliverables
 
@@ -194,6 +194,7 @@ These are not promises. The final report says which ones held.
 - **H2.** At small budgets (k ≤ 6), physics inputs improve on the plain GAT.
 - **H3.** Greedy placement beats the random median at every k from 2 to 16, and lies above the random 95th percentile for k ≤ 8.
 - **H4.** The single masked model gets within 3 points of top-3 accuracy of a model trained for one fixed budget, at k = 4 and k = 8.
+  - *How it is tested (added in M13):* the fixed model has the masked model's settings but trains with one sensor set only (`fixed_sensors`): on CV, each fold's M11 greedy set; on the test, the final greedy set. Both models are scored on that set and paired per case. H4 holds at k if masked − fixed top-3 ≥ −3 points (point estimate); the CI is reported as well.
 - **H5.** Big leaks are close to trivial at k ≥ 8, because the typical big leak (median 980 L/s) causes pressure drops of tens of metres. The headline difficulty number is therefore **small-leak top-3 at k = 8**, and claims about model quality rest mainly on it.
   - Leak sizes overlap across the two types (D11), and the smallest leaks (about 4 L/s) are probably below what pressure sensors can detect. So the final report also plots accuracy against leak flow. This plot is for reporting only; leak flow is never a model input.
 

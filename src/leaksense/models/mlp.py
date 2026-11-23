@@ -50,6 +50,9 @@ class MLPConfig:
     inner_eval_ks: str = ""
     class_weight: str = "inverse"
     k_min: int = 1  # training mask size k ~ U{k_min..31}
+    # H4 (M13): train for one fixed sensor set instead of random masks, e.g. "4,26,12,25"
+    # (junction indices 0..30); a string, because list-valued settings are grids
+    fixed_sensors: str = ""
     seed: int = 0
 
     def __post_init__(self) -> None:
@@ -59,6 +62,26 @@ class MLPConfig:
             raise ValueError(f"class_weight must be one of {CLASS_WEIGHTS}")
         if self.layers < 1 or self.hidden < 1 or self.k_min < 1:
             raise ValueError("layers, hidden and k_min must be >= 1")
+        if self.fixed_sensors:
+            idx = fixed_indices(self.fixed_sensors)
+            if len(set(idx)) != len(idx) or min(idx) < 0:
+                raise ValueError("fixed_sensors must be distinct junction indices >= 0")
+
+
+def fixed_indices(s: str) -> list[int]:
+    return [int(v) for v in str(s).split(",") if v.strip()]
+
+
+def train_masks(n: int, j: int, cfg: Any, rng: np.random.Generator, k_min: int) -> np.ndarray:
+    """Training/validation masks: random k ~ U{k_min..j}, or ``cfg.fixed_sensors`` for every row."""
+    if getattr(cfg, "fixed_sensors", ""):
+        idx = fixed_indices(cfg.fixed_sensors)
+        if max(idx) >= j:
+            raise ValueError(f"fixed_sensors index out of range for {j} junctions")
+        m = np.zeros((n, j), dtype=bool)
+        m[:, idx] = True
+        return m
+    return random_k_masks(n, j, k_min, rng)
 
 
 def parse_config(d: dict, cls: type = MLPConfig) -> tuple[Any, dict[str, list]]:
@@ -207,7 +230,7 @@ def _train(
 
     if val is not None:
         vr = np.random.default_rng(seed + 1)
-        vm = np.concatenate([random_k_masks(len(val.x), j, 1, vr) for _ in range(cfg.val_masks)])
+        vm = np.concatenate([train_masks(len(val.x), j, cfg, vr, 1) for _ in range(cfg.val_masks)])
         vx = torch.from_numpy(
             encode(np.tile(val.x, (cfg.val_masks, 1)), vm, cfg.transform).astype(np.float32)
         )
@@ -219,7 +242,7 @@ def _train(
     for ep in range(1, epochs + 1):
         net.train()
         xin = torch.from_numpy(
-            encode(tr.x, random_k_masks(n, j, cfg.k_min, rng), cfg.transform).astype(np.float32)
+            encode(tr.x, train_masks(n, j, cfg, rng, cfg.k_min), cfg.transform).astype(np.float32)
         )
         perm = torch.from_numpy(rng.permutation(n))
         for b in range(0, n, cfg.batch_size):

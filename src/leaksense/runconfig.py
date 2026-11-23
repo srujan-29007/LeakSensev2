@@ -45,6 +45,7 @@ class RunConfig:
     model: dict = field(default_factory=dict)  # model settings (M8+); not part of the hash
     ablation: dict = field(default_factory=dict)  # variants and seeds (M10); not part of the hash
     placement: dict = field(default_factory=dict)  # sensor placement (M11); not part of the hash
+    final: dict = field(default_factory=dict)  # locked-test run (M13); not part of the hash
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -52,14 +53,15 @@ class RunConfig:
     def hash(self) -> str:
         """Short hash of the feature-relevant settings (names the feature folder).
 
-        ``name``, ``model``, ``ablation`` and ``placement`` are left out, so model configs share
-        the cache.
+        ``name``, ``model``, ``ablation``, ``placement`` and ``final`` are left out, so model
+        configs share the cache.
         """
         d = self.to_dict()
         d.pop("name")
         d.pop("model")
         d.pop("ablation")
         d.pop("placement")
+        d.pop("final")
         return hashlib.sha256(json.dumps(d, sort_keys=True).encode()).hexdigest()[:12]
 
     def select_scenarios(self, available: list[int]) -> list[int]:
@@ -85,7 +87,7 @@ def _build(cls, d: dict):
 def load_run_config(path: str | Path) -> RunConfig:
     raw = yaml.safe_load(Path(path).read_text()) or {}
     feats = _build(FeatureConfig, raw.pop("features", {}) or {})
-    for key in ("model", "ablation", "placement"):
+    for key in ("model", "ablation", "placement", "final"):
         if key in raw:
             raw[key] = dict(raw[key] or {})
     if "include_scenarios" in raw:

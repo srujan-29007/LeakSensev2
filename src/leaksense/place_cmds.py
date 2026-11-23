@@ -372,17 +372,21 @@ def render_markdown(rep: dict) -> str:
     return "\n".join(L) + "\n"
 
 
-def plot_curve(rep: dict, path: Path) -> None:
+def plot_curve(rep: dict, path: Path, title: str | None = None) -> None:
     import matplotlib
 
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
     ks = rep["ks"]
-    fig, axes = plt.subplots(1, 2, figsize=(10, 4), sharey=True)
-    for ax, (g, title) in zip(
-        axes, (("overall", "All cases"), ("leak_type=small", "Small leaks")), strict=True
-    ):
+    panels = [
+        (g, t)
+        for g, t in (("overall", "All cases"), ("leak_type=small", "Small leaks"))
+        if g in rep["results"]["model"][str(ks[0])]
+    ]
+    fig, axes = plt.subplots(1, len(panels), figsize=(5 * len(panels), 4), sharey=True)
+    axes = np.atleast_1d(axes)
+    for ax, (g, panel) in zip(axes, panels, strict=True):
         res = rep["results"]["model"]
 
         def get(m, g=g, res=res):
@@ -402,12 +406,12 @@ def plot_curve(rep: dict, path: Path) -> None:
             ls="--",
             label="sigmatch_all, random mean",
         )
-        ax.set_title(title)
+        ax.set_title(panel)
         ax.set_xlabel("sensors (k)")
         ax.grid(alpha=0.3)
     axes[0].set_ylabel("top-3 accuracy (%)")
     axes[0].legend(loc="lower right", fontsize=8)
-    fig.suptitle(f"Sensor placement, {rep['model_label']} (CV, outer folds)")
+    fig.suptitle(title or f"Sensor placement, {rep['model_label']} (CV, outer folds)")
     fig.tight_layout()
     fig.savefig(path, dpi=120)
     plt.close(fig)

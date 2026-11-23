@@ -1,0 +1,92 @@
+# M13 locked test. Every rung is fit once on all 419 CV cases and scored on the locked-test
+# cases, with the same 20 seeded random sensor sets per k as the CV reports. GAT variants use the
+# ablation_full block plus their overrides, seeds 0-2 (as M10 stage 2); MLP and GBM are the
+# mlp_cpu / gbm_cpu blocks, seed 0. The headline model is also scored on the M11 final placement
+# (greedy, coverage, 100 random sets) and against fixed-set models (H4).
+# `leaksense final-report` saves each unit to reports/raw/final/ as it finishes (resumable) and
+# refuses to re-score the test fold with a changed config. Writes reports/FINAL.md, final.json.
+name: final
+seed: 0
+n_scenarios: null
+features:
+  slot: tod_weekday
+  baseline_days: 14
+  estimator: mean
+  window: 48
+  stride: 24
+  max_lag_days: 7
+  max_windows_per_case: 32
+  pre_guard_steps: 0
+  snr_holdout_days: 3.0
+model:
+  kind: gat
+  transform: scale_magnitude
+  hidden: 64
+  heads: 4
+  layers: 4
+  node_embed: 8
+  dropout: 0.1
+  lr: 0.001
+  weight_decay: 0.0001
+  batch_size: 256
+  max_epochs: 150
+  patience: 20
+  val_frac: 0.15
+  class_weight: inverse
+  k_min: 1
+  num_threads: 4
+  seed: 0
+final:
+  ks: [2, 3, 4, 6, 8, 12, 16, 31]
+  draws: 20
+  nonlearned: [chance, prior, maxdh, sigmatch, sigmatch_all]
+  learned:
+    mlp:
+      seeds: [0]
+      model:
+        kind: mlp
+        transform: [signed_log1p, scale_magnitude, none]
+        hidden: 256
+        layers: 2
+        dropout: 0.2
+        lr: 0.001
+        weight_decay: 0.0001
+        batch_size: 256
+        max_epochs: 300
+        patience: 30
+        val_frac: 0.15
+        class_weight: inverse
+        k_min: 1
+        seed: 0
+    gbm:
+      seeds: [0]
+      model:
+        kind: gbm
+        transform: [scale_magnitude, none]
+        n_masks: 4
+        k_min: 1
+        num_leaves: 15
+        learning_rate: 0.1
+        max_rounds: 1000
+        early_stopping: 50
+        min_child_samples: 20
+        feature_fraction: 0.8
+        bagging_fraction: 0.8
+        lambda_l2: 1.0
+        class_weight: inverse
+        val_frac: 0.15
+        num_threads: 4
+        seed: 0
+    gat: {seeds: [0, 1, 2]}
+    gat_noembed: {seeds: [0, 1, 2], overrides: {node_embed: 0}}
+    gat_snode: {seeds: [0, 1, 2], overrides: {physics: node}}
+    gat_snode_noembed: {seeds: [0, 1, 2], overrides: {physics: node, node_embed: 0}}
+  headline: gat_snode_noembed  # the M11 model, chosen post hoc on CV (PLAN.md M10)
+  rule_pick: gat_snode         # what the pre-registered M10 stage-2 rule would have picked
+  plain: gat                   # H2 baseline
+  placement:
+    # the M11 final placement; its model block must equal the headline seed-0 block
+    runs: reports/raw/placement
+    name: placement
+  fixed_ks: [4, 8]             # H4
+  cv_reports: reports          # CV numbers shown next to the test ones

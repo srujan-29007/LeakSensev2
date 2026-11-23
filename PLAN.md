@@ -409,7 +409,8 @@ notebooks/kaggle_run.ipynb     # calls the CLI only, no logic
     - **The final greedy saturates.** Inner top-3 reaches 95.7% at k = 8 on 46 cases, so its picks at k = 12 and k = 16 are made by the true-class-score tie-break alone.
   - **Final placement** (for M13 and M14), in order: 6, 28, 14, 27, 23, 31, 12, 29, 5, 8, 11, 30, 13, 2, 4, 20.
 
-### M12: Full run on Kaggle (optional)
+### M12: Full run on Kaggle (optional) — SKIPPED
+- Skipped: every stage (M10 ablation, M11 placement) ran on the laptop CPU, so no report uses Kaggle artifacts. The notebook stays for reruns.
 - `notebooks/kaggle_run.ipynb` sets `LEAKSENSE_DATA_DIR` to the Kaggle input path, installs the repo, and runs the CLI with `configs/full.yaml`. The notebook contains no logic of its own.
 - **First, run `leaksense validate-data` on Kaggle.** Stop if the manifest sha256 is not `6281be1c3cf2…`. *(data: the old notebooks used a third-party Kaggle copy whose contents were never verified)*
 - **Verify:**
@@ -426,6 +427,12 @@ notebooks/kaggle_run.ipynb     # calls the CLI only, no logic
   - the number of excluded cases (M3) and the chosen baseline method (M4)
   - limitations
 - **Verify:** `uv run leaksense final-report`, then tag the commit.
+- **Built:**
+  - **H4 on CV** (`leaksense fixed-budget`, `configs/place_cpu.yaml`): no earlier milestone built the fixed-budget model. Models now take `fixed_sensors` (one sensor set for every training and validation row; when it is unset, the random-mask stream is unchanged). Per outer fold and k ∈ {4, 8}, the headline settings are trained on that fold's M11 greedy set and paired per case with the masked model's M11 score on the same set. Writes `reports/fixed_budget.{json,md}`.
+  - **`leaksense final-report`** (`configs/final.yaml`): fits every rung once on all 419 CV cases (GAT variants at seeds 0–2; MLP and GBM at seed 0) and scores the test cases with the same 20 seeded random sets per k as CV. The headline model (seed 0) and `sigmatch_all` are also scored on the M11 final placement (greedy, coverage, the same 100 random sets). H4 is rerun with the final greedy set. Each unit is saved as it finishes (`reports/raw/final/`). Scoring the test needs `--confirm-locked-test`, and a saved test unit whose config has changed is never re-scored. `--stand-in-fold F` runs the whole pipeline with CV fold F in place of the test.
+  - The test eval set (`evaluate.build_test_set`) uses the CV tercile edges; `build_eval_set` still raises `LockedFoldError` for every CV command.
+- **H4 on CV — DONE** (`reports/fixed_budget.md`, 419 cases, seed 0; 10 fixed-set runs, 321–795 s each). Top-3, masked − fixed: k = 4 −1.7 [−6.4, +3.6] points (fixed 69.0, masked 67.3); k = 8 +0.7 [−2.6, +3.8] (fixed 86.2, masked 86.9). **H4 holds** at both k by the point-estimate rule; at k = 4 the CI reaches −6.4, so the evidence is weaker there.
+- **Stand-in dry run** (`--stand-in-fold 0`, 9 of 21 units): every unit matches the CV runs on the same fold exactly (chance, prior, maxdh, sigmatch, MLP, GBM and the `gat_snode_noembed` ladder against `artifacts/eval` and `reports/raw/ablation`; coverage and random placement scores against the M11 fold-0 run, both scorers). Timing on 335 cases: the headline GAT unit with placement scoring 1,955 s, a fixed-set unit 154 s, MLP 217 s, GBM 90 s.
 
 ### M14: API and single page
 - FastAPI endpoints:

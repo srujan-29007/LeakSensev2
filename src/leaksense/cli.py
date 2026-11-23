@@ -63,6 +63,8 @@ def build_parser() -> argparse.ArgumentParser:
     from leaksense.ablate import add_parsers as add_ablate
     from leaksense.eval_cmds import add_parsers as add_eval
     from leaksense.feature_cmds import add_parsers
+    from leaksense.final_cmds import add_parsers as add_final
+    from leaksense.fixed_cmds import add_parsers as add_fixed
     from leaksense.place_cmds import add_parsers as add_place
     from leaksense.sens_cmds import add_parsers as add_sens
     from leaksense.train_cmds import add_parsers as add_train
@@ -73,6 +75,8 @@ def build_parser() -> argparse.ArgumentParser:
     add_train(sub)
     add_ablate(sub)
     add_place(sub)
+    add_fixed(sub)
+    add_final(sub)
     return parser
 
 

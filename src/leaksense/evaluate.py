@@ -94,15 +94,41 @@ class EvalSet:
 def build_eval_set(case_stats: pd.DataFrame, feats: dict, splits: dict, net: Network) -> EvalSet:
     test = set(int(s) for s in splits["test"])
     fold_of = {int(s): k for k, ids in enumerate(splits["folds"]) for s in ids}
-    classes = net.leak_pipe_ids
-    cls_index = {p: i for i, p in enumerate(classes)}
-
     cs = case_stats.reset_index(drop=True)
     cs = cs.assign(_row=np.arange(len(cs)))
     keep = cs[cs["scenario_id"].isin(fold_of)].copy()
     if keep["scenario_id"].isin(test).any():
         raise LockedFoldError("a locked-test scenario reached the evaluation set")
     keep["fold"] = keep["scenario_id"].map(fold_of).astype(int)
+    return _assemble(cs, keep, feats, net)
+
+
+TEST_FOLD = -1  # ``fold`` value of locked-test cases in ``build_test_set``
+
+
+def build_test_set(
+    case_stats: pd.DataFrame, feats: dict, splits: dict, net: Network, tercile_edges: dict
+) -> EvalSet:
+    """The locked-test cases (M13 only; ``leaksense final-report`` is the one caller).
+
+    ``fold`` is ``TEST_FOLD`` for every case. Tercile edges are passed in (the CV set's), so
+    test groups use the same leak-flow / SNR bins as every CV report.
+    """
+    test = set(int(s) for s in splits["test"])
+    cs = case_stats.reset_index(drop=True)
+    cs = cs.assign(_row=np.arange(len(cs)))
+    keep = cs[cs["scenario_id"].isin(test)].copy()
+    if keep.empty:
+        raise ValueError("no locked-test cases in the feature cache")
+    keep["fold"] = TEST_FOLD
+    return _assemble(cs, keep, feats, net, tercile_edges)
+
+
+def _assemble(
+    cs: pd.DataFrame, keep: pd.DataFrame, feats: dict, net: Network, edges: dict | None = None
+) -> EvalSet:
+    classes = net.leak_pipe_ids
+    cls_index = {p: i for i, p in enumerate(classes)}
     keep["y"] = keep["pipe"].map(cls_index)
     if keep["y"].isna().any():
         raise ValueError("case labels outside the leak-eligible pipes")
@@ -126,6 +152,8 @@ def build_eval_set(case_stats: pd.DataFrame, feats: dict, splits: dict, net: Net
     hops = net.pipe_hops[np.ix_(cls_pipe, cls_pipe)].astype(float)
 
     keep = keep.drop(columns="_row").reset_index(drop=True)
+    if edges is not None:
+        return EvalSet(keep, windows, classes, dist, hops, dict(edges))
     edges = {}
     for col in ("leak_flow_lps", "snr"):
         v = keep[col].to_numpy(dtype=float)

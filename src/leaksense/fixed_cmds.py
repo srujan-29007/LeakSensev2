@@ -1,0 +1,288 @@
+"""CLI command for SPEC H4: ``leaksense fixed-budget``.
+
+H4: the single masked model gets within 3 points of top-3 of a model trained for one fixed
+budget, at k = 4 and k = 8. Per outer fold and k, the placement config's model is retrained with
+``fixed_sensors`` = that fold's M11 greedy set (chosen without the outer fold) and scored on the
+outer cases with that set. The masked model's scores on the same set and cases come from the M11
+run (``reports/raw/placement``), so the comparison is paired per case. Same features, folds, model
+settings and seed; only the training masks differ.
+
+Each (k, fold) is saved to ``<runs-dir>/fixed__k<k>_f<fold>.{json,parquet}`` as it finishes.
+Writes ``reports/fixed_budget.{json,md}``.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import time
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+
+from leaksense.config import ConfigError
+from leaksense.eval_cmds import EXIT_OK, add_common, load_inputs
+from leaksense.place_cmds import _done, _key, _save
+from leaksense.placement import COLS, as_mask, per_case_metrics
+
+H4_MARGIN = 0.03  # "within 3 points" of top-3
+H4_GROUPS = ("overall", "leak_type=small", "leak_type=big")
+
+
+def add_parsers(sub) -> None:
+    p = sub.add_parser(
+        "fixed-budget", help="H4: masked model vs models trained for one sensor set (reports/)"
+    )
+    add_common(p, default_config="configs/place_cpu.yaml")
+    p.set_defaults(name="fixed_budget", func=cmd_fixed)
+    p.set_defaults(k="4,8")
+    p.add_argument("--folds", help="comma-separated outer folds to run (default: all)")
+    p.add_argument("--placement-runs", default="reports/raw/placement", help="M11 per-fold runs")
+    p.add_argument("--placement-name", default="placement", help="M11 run name")
+    p.add_argument("--runs-dir", default="reports/raw/fixed", help="per-(k, fold) results")
+    p.add_argument("--aggregate-only", action="store_true", help="only aggregate saved runs")
+
+
+def fixed_model_cfg(model_cfg: dict, junction_idx: list[int]) -> dict:
+    return {**model_cfg, "fixed_sensors": ",".join(str(int(j)) for j in junction_idx)}
+
+
+def _placement_fold(args, f: int, model_cfg: dict) -> tuple[dict, pd.DataFrame]:
+    rd = Path(args.placement_runs)
+    js = rd / f"{args.placement_name}__f{f}.json"
+    pq = rd / f"{args.placement_name}__f{f}.parquet"
+    if not js.is_file() or not pq.is_file():
+        raise ConfigError(f"no M11 run for fold {f} in {rd}; run `leaksense place` first")
+    info = json.loads(js.read_text())
+    if info["fp"]["model"] != model_cfg:
+        raise ConfigError(f"the M11 run in {rd} used a different model config")
+    return info, pd.read_parquet(pq)
+
+
+def run_one(inp, model_cfg: dict, f: int, k: int, order: list[int]) -> tuple[dict, pd.DataFrame]:
+    from leaksense.evaluate import _score
+    from leaksense.train_cmds import make_model
+
+    es = inp.es
+    folds = es.cases["fold"].to_numpy()
+    tr, idx = np.flatnonzero(folds != f), np.flatnonzero(folds == f)
+    model = make_model(inp, fixed_model_cfg(model_cfg, order[:k]))
+    model.fit(es.cases.iloc[tr].reset_index(drop=True), [es.windows[i] for i in tr])
+    m = as_mask(order[:k], len(inp.net.sensor_ids))
+    xs = [es.windows[i] for i in idx]
+    vals = per_case_metrics(
+        _score(model, xs, m), es.cases["y"].to_numpy()[idx], es.dist_to_leak[idx], es.class_hops
+    )
+    df = pd.DataFrame(vals, columns=list(COLS))
+    df.insert(0, "case_id", es.cases["case_id"].to_numpy()[idx])
+    info = {"sensors_idx": [int(j) for j in order[:k]], "training": model.describe()["folds"][-1]}
+    return info, df
+
+
+def compare(es, fixed: np.ndarray, masked: np.ndarray, n_boot: int, seed: int) -> dict:
+    """Per group: fixed and masked top-3 (with CIs) and the paired masked - fixed difference."""
+    from leaksense.ablate import _paired
+    from leaksense.evaluate import groups
+    from leaksense.place_cmds import _summ
+
+    scen = es.cases["scenario_id"].to_numpy()
+    out = {}
+    for g, sel in groups(es).items():
+        if g not in H4_GROUPS or not sel.any():
+            continue
+        d = _paired(masked[sel] - fixed[sel], scen[sel], n_boot, seed)
+        out[g] = {
+            "n": int(sel.sum()),
+            "fixed": _summ(fixed[sel], scen[sel], n_boot, seed),
+            "masked": _summ(masked[sel], scen[sel], n_boot, seed),
+            "masked_minus_fixed": d,
+        }
+    o = out["overall"]["masked_minus_fixed"]["top3"]
+    out["h4_within_3_points"] = bool(o["value"] >= -H4_MARGIN)
+    out["h4_ci_within_3_points"] = bool(o["lo"] >= -H4_MARGIN)
+    return out
+
+
+def h4_verdict(per_k: dict) -> str:
+    ok = [per_k[k]["h4_within_3_points"] for k in per_k]
+    return "yes" if all(ok) else "partly" if any(ok) else "no"
+
+
+def render_markdown(rep: dict) -> str:
+    g = rep["provenance"]["git"]
+    lines = [
+        "# H4: one masked model vs a model per fixed sensor set",
+        "",
+        f"- **Generated by:** `leaksense fixed-budget`, config "
+        f"`{rep['provenance']['config'].get('name')}`, commit `{(g['commit'] or '?')[:10]}`"
+        f"{' (dirty)' if g['dirty'] else ''}, data manifest "
+        f"`{(rep['provenance']['data_manifest_sha256'] or '?')[:12]}`, features "
+        f"`{rep['features_dir']}`, model seed {rep['model_seed']}.",
+        f"- **Cases:** {rep['n_cases']} CV cases, each scored on its outer fold. The locked test "
+        "fold is not used.",
+        f"- **Sets:** each fold's M11 learned-greedy set at k (chosen on that fold's training "
+        f"cases). The fixed model (`{rep['model_label']}` settings, `fixed_sensors` = the set) "
+        "is trained with that set only; the masked model is the M11 model on the same set.",
+        f"- **Rule:** H4 holds at k if masked - fixed top-3 >= -{100 * H4_MARGIN:.0f} points "
+        f"(point estimate); the CI column shows whether the whole 95% CI clears it. "
+        f"{rep['bootstrap']} bootstrap resamples over scenarios, paired per case.",
+        "",
+        "| k | group | n | fixed top-3 | masked top-3 | masked - fixed (points) | within 3? |",
+        "|---|---|---|---|---|---|---|",
+    ]
+
+    def pct(d):
+        return f"{100 * d['value']:.1f} [{100 * d['lo']:.1f}, {100 * d['hi']:.1f}]"
+
+    def diff(d):
+        return f"{100 * d['value']:+.1f} [{100 * d['lo']:+.1f}, {100 * d['hi']:+.1f}]"
+
+    for k, r in rep["results"].items():
+        for gname in H4_GROUPS:
+            if gname not in r:
+                continue
+            d = r[gname]
+            mark = ""
+            if gname == "overall":
+                mark = "yes" if r["h4_within_3_points"] else "no"
+                mark += " (CI too)" if r["h4_ci_within_3_points"] else ""
+            lines.append(
+                f"| {k} | {gname} | {d['n']} | {pct(d['fixed']['top3'])} | "
+                f"{pct(d['masked']['top3'])} | {diff(d['masked_minus_fixed']['top3'])} | {mark} |"
+            )
+    lines += [
+        "",
+        f"**H4 (CV): {rep['h4']}.** Accuracy in %, [95% CI].",
+        "",
+        "## Training (per fold)",
+        "",
+        "| k | fold | sensors | epochs | inner-val loss |",
+        "|---|---|---|---|---|",
+    ]
+    for k, folds in rep["runs"].items():
+        for f, r in folds.items():
+            t = r["training"]
+            vl = "-" if t["val_loss"] is None else f"{t['val_loss']:.3f}"
+            lines.append(f"| {k} | {f} | {', '.join(r['sensors'])} | {t['epochs']} | {vl} |")
+    lines.append("")
+    return "\n".join(lines)
+
+
+def cmd_fixed(args: argparse.Namespace) -> int:
+    from leaksense.provenance import file_sha256, provenance
+    from leaksense.runconfig import load_run_config
+
+    t0 = time.perf_counter()
+    cfg = load_run_config(args.config)
+    if not cfg.model:
+        raise ConfigError("the config needs a model: section")
+    inp = load_inputs(args)
+    es = inp.es
+    ks = sorted(inp.ks)
+    all_folds = sorted(int(f) for f in es.cases["fold"].unique())
+    todo = [int(f) for f in args.folds.split(",")] if args.folds else all_folds
+    if set(todo) - set(all_folds):
+        raise ConfigError(f"--folds must be among {all_folds}")
+    pl = {f: _placement_fold(args, f, cfg.model) for f in all_folds}
+    if max(ks) > len(pl[all_folds[0]][0]["greedy_order_idx"]):
+        raise ConfigError("k is larger than the saved greedy order")
+
+    runs_dir = Path(args.runs_dir)
+    runs_dir.mkdir(parents=True, exist_ok=True)
+    base_fp = {
+        "features_dir": inp.fdir.name,
+        "features_sha256_12": inp.meta.get("features_sha256_12"),
+        "splits_sha256": file_sha256(args.splits),
+        "model": cfg.model,
+    }
+
+    def key_for(f, k):
+        return _key({**base_fp, "k": k, "fold": f, "sensors": pl[f][0]["greedy_order_idx"][:k]})
+
+    if not args.aggregate_only:
+        for k in ks:
+            for f in todo:
+                name = f"fixed__k{k}_f{f}"
+                if _done(runs_dir, name, key_for(f, k)):
+                    print(f"{name}: done, skipped")
+                    continue
+                t1 = time.perf_counter()
+                order = pl[f][0]["greedy_order_idx"]
+                print(f"{name}: training on sensors {order[:k]}", flush=True)
+                info, df = run_one(inp, cfg.model, f, k, order)
+                secs = round(time.perf_counter() - t1, 1)
+                meta = {"key": key_for(f, k), "fp": base_fp, "k": k, "fold": f, "seconds": secs}
+                _save(runs_dir, name, {**meta, **info}, df)
+                print(f"{name}: top-3 {100 * df['top3'].mean():.1f} ({secs:.0f}s)", flush=True)
+        if args.folds:
+            print("subset of folds: no report written")
+            return EXIT_OK
+
+    pos = {c: i for i, c in enumerate(es.cases["case_id"])}
+    n = len(es.cases)
+    results, runs, missing = {}, {}, []
+    for k in ks:
+        fixed = np.full((n, len(COLS)), np.nan)
+        masked = np.full((n, len(COLS)), np.nan)
+        runs[str(k)] = {}
+        for f in all_folds:
+            name = f"fixed__k{k}_f{f}"
+            if not _done(runs_dir, name, key_for(f, k)):
+                missing.append(name)
+                continue
+            info = json.loads((runs_dir / f"{name}.json").read_text())
+            df = pd.read_parquet(runs_dir / f"{name}.parquet")
+            fixed[df["case_id"].map(pos).to_numpy()] = df[list(COLS)].to_numpy()
+            p = pl[f][1]
+            p = p[(p["method"] == "greedy") & (p["scorer"] == "model") & (p["k"] == k)]
+            masked[p["case_id"].map(pos).to_numpy()] = p[list(COLS)].to_numpy()
+            runs[str(k)][str(f)] = {
+                "sensors": [inp.net.sensor_ids[j] for j in info["sensors_idx"]],
+                "seconds": info["seconds"],
+                "training": info["training"],
+            }
+        if not missing:
+            if np.isnan(fixed).any() or np.isnan(masked).any():
+                raise ValueError(f"cases missing at k={k}")
+            results[str(k)] = compare(es, fixed, masked, args.bootstrap, args.seed)
+    if missing:
+        raise ConfigError(f"runs missing: {missing}; run them first")
+
+    rep = {
+        "name": args.name,
+        "command": "leaksense fixed-budget",
+        "provenance": provenance(
+            None,
+            config=cfg.to_dict(),
+            seed=args.seed,
+            manifest_sha256=inp.meta.get("data_manifest_sha256"),
+        ),
+        "splits_sha256": base_fp["splits_sha256"],
+        "features_dir": inp.fdir.name,
+        "model_label": (cfg.placement or {}).get("model_label") or cfg.model.get("kind"),
+        "model_seed": cfg.model.get("seed", 0),
+        "n_cases": n,
+        "ks": ks,
+        "bootstrap": args.bootstrap,
+        "h4_margin": H4_MARGIN,
+        "h4": h4_verdict(results),
+        "results": results,
+        "runs": runs,
+    }
+    rep["elapsed_seconds"] = round(time.perf_counter() - t0, 1)
+    out = Path(args.reports_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    js = out / f"{args.name}.json"
+    js.write_text(json.dumps(rep, indent=1, default=str))
+    js.with_suffix(".md").write_text(render_markdown(rep), encoding="utf-8")
+    print("   k   fixed top-3   masked top-3   masked - fixed")
+    for k, r in results.items():
+        o = r["overall"]
+        print(
+            f"{k:>4}   {100 * o['fixed']['top3']['value']:11.1f}   "
+            f"{100 * o['masked']['top3']['value']:12.1f}   "
+            f"{100 * o['masked_minus_fixed']['top3']['value']:+14.1f}"
+        )
+    print(f"H4 (CV): {rep['h4']}; done in {rep['elapsed_seconds']:.0f}s -> {js}")
+    return EXIT_OK

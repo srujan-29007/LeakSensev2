@@ -417,7 +417,7 @@ notebooks/kaggle_run.ipynb     # calls the CLI only, no logic
   - The Kaggle log shows that validate-data passed with the expected manifest.
   - Download the artifacts, run `uv run leaksense eval --from-artifacts <dir>` locally on the CPU subset, and check the numbers match within tolerance.
 
-### M13: Locked test and final report
+### M13: Locked test and final report — DONE
 - Evaluate the test fold exactly once.
 - Write `reports/FINAL.md` covering:
   - every rung, with all M6 breakdowns
@@ -433,6 +433,14 @@ notebooks/kaggle_run.ipynb     # calls the CLI only, no logic
   - The test eval set (`evaluate.build_test_set`) uses the CV tercile edges; `build_eval_set` still raises `LockedFoldError` for every CV command.
 - **H4 on CV — DONE** (`reports/fixed_budget.md`, 419 cases, seed 0; 10 fixed-set runs, 321–795 s each). Top-3, masked − fixed: k = 4 −1.7 [−6.4, +3.6] points (fixed 69.0, masked 67.3); k = 8 +0.7 [−2.6, +3.8] (fixed 86.2, masked 86.9). **H4 holds** at both k by the point-estimate rule; at k = 4 the CI reaches −6.4, so the evidence is weaker there.
 - **Stand-in dry run** (`--stand-in-fold 0`, 9 of 21 units): every unit matches the CV runs on the same fold exactly (chance, prior, maxdh, sigmatch, MLP, GBM and the `gat_snode_noembed` ladder against `artifacts/eval` and `reports/raw/ablation`; coverage and random placement scores against the M11 fold-0 run, both scorers). Timing on 335 cases: the headline GAT unit with placement scoring 1,955 s, a fixed-set unit 154 s, MLP 217 s, GBM 90 s.
+- **Verified — DONE** (`reports/FINAL.md`, `reports/final.json`; locked test run once, 21/21 units, 70 cases from 70 scenarios: 37 small, 33 big; 65 pre-leak baselines, 5 post).
+  - **Headline:** `gat_snode_noembed` (3 seeds) small-leak top-3 at k = 8 is **70.5 [62.2, 77.7]** (CV 68.6). All cases 77.6 [72.3, 82.4] (CV 76.4); k = 31 96.2. Every rung's test number is close to its CV number (table in FINAL.md).
+  - **H1: not shown on the test.** At k = 8 the headline is +0.8 [−3.9, +6.0] over `sigmatch_all` (76.8); at k = 12 it is +4.7 [+1.0, +8.5] paired, but the CIs of the two rungs overlap at every k (CV: held at k = 16, 31). The plain `gat` is below `sigmatch_all` at k = 8 (−8.4).
+  - **H2: holds** (test and CV). Headline minus `gat`: +12.0 to +18.3 points at k = 2–6, all CIs above 0; `gat_snode` +7.5 to +12.2.
+  - **H3: partly** (same as CV). Greedy beats the random median at k = 2–12, not at 16; above the random p95 at k = 3–8, not at 2. At k = 8: greedy 88.6, coverage 81.4, random mean 77.0. Placement-matched, `sigmatch_all` greedy and coverage both reach 85.7.
+  - **H4: holds** (test and CV). Masked − fixed: k = 4 +2.9 [−8.6, +14.3], k = 8 +1.4 [−4.3, +8.6].
+  - **H5 (big-leak part): no.** Big-leak top-3 is 85.6 at k = 8 and reaches 95.1 only at k = 12. Top-3 at k = 8 rises from about 64 (leak flow under 137 L/s) to about 85 above it.
+  - The post hoc model choice is checked: the rule pick `gat_snode` scores 71.8 at k = 8 (small 62.8), below the headline by +5.8 [+2.2, +9.2] paired.
 
 ### M14: API and single page
 - FastAPI endpoints:

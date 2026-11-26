@@ -455,6 +455,11 @@ notebooks/kaggle_run.ipynb     # calls the CLI only, no logic
 - **Verify:**
   - `uv run pytest tests/test_api.py` passes, using the FastAPI TestClient.
   - Run `uv run leaksense serve`, open http://localhost:8000, choose a budget and a case, and check that predictions and curves appear.
+- **Built:**
+  - **`leaksense export-serve`** (`configs/final.yaml`): refits the headline model exactly as the M13 unit `ml__gat_snode_noembed_s0` (all 419 CV cases, seed 0) and checks it against that unit's saved rows. On the same sensor sets at the headline k, the per-case top-3 must match, so the served model is the reported one; otherwise it refuses to write. It saves one bundle, `$LEAKSENSE_ARTIFACTS_DIR/serve/bundle.pt`, with the nominal network, that model, `sigmatch_all`, and the locked-test cases with their cached ΔH windows. `serve` reads only this bundle and `reports/final.json`, never the dataset.
+  - **`leaksense serve`** (`leaksense.api`): `/network`, `/placements?k=`, `/cases` (the 70 locked-test cases), `POST /predict` (case + sensor ids + model → ranked pipes, true-pipe rank, distance along pipes), `/curves` (ladder, placement and leak-flow curves from `final.json`), and `/` → `web/index.html`.
+  - **`web/index.html`**: a vanilla JS/SVG page. It has a clickable network map (sensors, the top-3 predicted pipes, the true pipe), presets for the greedy, coverage and random sets, and the ranked pipes. It also shows three charts with table views: the ladder top-3 vs k, placement vs random p5–p95, and top-3 by leak flow.
+  - `httpx` added as a dev dependency for the FastAPI TestClient.
 
 ### M15: Stretch goals (detection, overlapping-leak stress test)
 - **Detection.**

@@ -13,6 +13,8 @@ from leaksense.placement import (
     topk_hits,
 )
 
+from conftest import FINAL
+
 
 def _toy_score_fn(n_sensors=6, n_cls=4, n_cases=40, seed=0):
     """Cases whose labels are readable only from junction 3 (plus a weaker hint at 1)."""
@@ -104,39 +106,6 @@ def _seed(cases):
     return _seed_for(cases, 0)
 
 
-PLACE = """model:
-  kind: gat
-  max_epochs: 2
-  hidden: 8
-  heads: 2
-  layers: 2
-  node_embed: 0
-  physics: node
-  val_frac: 0.0
-  num_threads: 1
-placement:
-  model_label: toy
-  k: [1, 2]
-  random: 3
-"""
-
-
-@pytest.fixture
-def place_env(cli_env):
-    from leaksense.cli import main
-
-    tmp_path, common = cli_env
-    assert main(["build-features", *common, "--quiet"]) == 0
-    sens = ["build-sensitivity", *common, "--splits", str(tmp_path / "splits.json")]
-    assert main([*sens, "--out", str(tmp_path / "sens"), "--quiet"]) == 0
-    cfg = tmp_path / "cfg.yaml"
-    cfg.write_text(cfg.read_text() + PLACE)
-    args = ["place", "--bootstrap", "20", "--splits", str(tmp_path / "splits.json")]
-    args += ["--reports-dir", str(tmp_path / "rep"), "--runs-dir", str(tmp_path / "runs")]
-    args += [*(common[:4] + common[6:])]
-    return tmp_path, args
-
-
 def test_cli_place_runs_resumes_and_reports(place_env):
     from leaksense.cli import main
 
@@ -195,32 +164,6 @@ def test_cli_fixed_budget_pairs_with_the_placement_run(place_env):
     run = json.loads((tmp_path / "fixed" / "fixed__k2_f0.json").read_text())
     assert run["sensors_idx"] == pl["folds"]["0"]["greedy_order_idx"][:2]
     assert "H4" in (tmp_path / "rep" / "fixed_budget.md").read_text(encoding="utf-8")
-
-
-FINAL = """model:
-  kind: gat
-  max_epochs: 2
-  hidden: 8
-  heads: 2
-  layers: 2
-  node_embed: 0
-  physics: node
-  val_frac: 0.0
-  num_threads: 1
-final:
-  ks: [1, 2, 4]
-  draws: 3
-  headline_k: 2
-  nonlearned: [chance, sigmatch_all]
-  learned:
-    gat_snode: {seeds: [0, 1]}
-    gat_plain: {seeds: [0], overrides: {physics: none}}
-  headline: gat_snode
-  plain: gat_plain
-  placement: {runs: RUNS, name: placement}
-  fixed_ks: [2]
-  cv_reports: REP
-"""
 
 
 def test_cli_final_report_scores_the_locked_test_once(place_env):

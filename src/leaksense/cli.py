@@ -67,6 +67,7 @@ def build_parser() -> argparse.ArgumentParser:
     from leaksense.fixed_cmds import add_parsers as add_fixed
     from leaksense.place_cmds import add_parsers as add_place
     from leaksense.sens_cmds import add_parsers as add_sens
+    from leaksense.serve_cmds import add_parsers as add_serve
     from leaksense.train_cmds import add_parsers as add_train
 
     add_parsers(sub)
@@ -77,6 +78,7 @@ def build_parser() -> argparse.ArgumentParser:
     add_place(sub)
     add_fixed(sub)
     add_final(sub)
+    add_serve(sub)
     return parser
 
 

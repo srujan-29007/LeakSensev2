@@ -1,0 +1,530 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LeakSense</title>
+<style>
+:root {
+  color-scheme: light;
+  --page: #f9f9f7;
+  --surface: #fcfcfb;
+  --ink: #0b0b0b;
+  --ink-2: #52514e;
+  --muted: #898781;
+  --grid: #e1e0d9;
+  --axis: #c3c2b7;
+  --border: rgba(11,11,11,0.10);
+  --s1: #2a78d6;  /* blue: headline model / prediction */
+  --s2: #eb6834;  /* orange: sigmatch_all / true leak */
+  --s3: #1baf7a;  /* aqua */
+  --s4: #eda100;  /* yellow */
+  --s1-soft: #9ec5f4;
+  --pipe: #c3c2b7;
+  --pipe-off: #e1e0d9;
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+    --page: #0d0d0d; --surface: #1a1a19; --ink: #f0efec; --ink-2: #c3c2b7; --muted: #898781;
+    --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,0.10);
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s1-soft: #1c5cab;
+    --pipe: #52514e; --pipe-off: #2c2c2a;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0d0d0d; --surface: #1a1a19; --ink: #f0efec; --ink-2: #c3c2b7; --muted: #898781;
+  --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,0.10);
+  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s1-soft: #1c5cab;
+  --pipe: #52514e; --pipe-off: #2c2c2a;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--page); color: var(--ink);
+  font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+main { max-width: 1180px; margin: 0 auto; padding: 20px 16px 48px; }
+h1 { font-size: 22px; margin: 0 0 2px; }
+h2 { font-size: 16px; margin: 0 0 4px; }
+p.sub, .note { color: var(--ink-2); margin: 0; }
+.note { font-size: 13px; }
+.card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+  padding: 16px; min-width: 0;
+}
+.grid2 { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 16px; margin-top: 16px; }
+.grid3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-top: 16px; }
+@media (max-width: 900px) { .grid2, .grid3 { grid-template-columns: minmax(0, 1fr); } }
+.controls { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: end; margin-top: 16px; }
+label.f { display: flex; flex-direction: column; font-size: 12px; color: var(--ink-2); gap: 2px; }
+select, input, button {
+  font: inherit; font-size: 14px; color: var(--ink); background: var(--surface);
+  border: 1px solid var(--axis); border-radius: 6px; padding: 5px 8px;
+}
+select { max-width: 100%; }
+#case { max-width: 320px; }
+input[type=number] { width: 64px; }
+button { cursor: pointer; }
+button:hover { border-color: var(--muted); }
+.seg button[aria-pressed=true] { background: var(--ink); color: var(--surface); border-color: var(--ink); }
+svg { display: block; width: 100%; height: auto; }
+svg text { fill: var(--muted); font-size: 11px; }
+.map-node { cursor: pointer; }
+.map-node circle.dot { fill: var(--surface); stroke: var(--muted); stroke-width: 1.5; }
+.map-node.on circle.dot { fill: var(--s1); stroke: var(--surface); stroke-width: 2; }
+.map-node:hover circle.dot, .map-node:focus circle.dot { stroke: var(--ink); }
+.map-node:focus { outline: none; }
+.map-node text { fill: var(--ink-2); font-size: 10px; pointer-events: none; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--ink-2); margin-top: 8px; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.key { display: inline-block; width: 16px; height: 0; border-top: 3px solid; border-radius: 2px; }
+.key.dash { border-top-style: dashed; }
+.key.dot { width: 10px; height: 10px; border-radius: 50%; border: 0; }
+ol.rank { list-style: none; padding: 0; margin: 8px 0 0; }
+ol.rank li {
+  display: grid; grid-template-columns: 28px 1fr auto; gap: 8px; align-items: center;
+  padding: 6px 0; border-bottom: 1px solid var(--grid); font-variant-numeric: tabular-nums;
+}
+ol.rank li .r { color: var(--muted); }
+ol.rank li.true { font-weight: 600; }
+.tag { font-size: 11px; padding: 1px 6px; border-radius: 99px; border: 1px solid var(--s2); color: var(--ink); margin-left: 6px; font-weight: 500; }
+.big { font-size: 28px; font-weight: 600; }
+.status { min-height: 1.4em; color: var(--ink-2); font-size: 13px; }
+.err { color: #d03b3b; }
+.chart-head { display: flex; justify-content: space-between; align-items: start; gap: 8px; flex-wrap: wrap; }
+.tip {
+  position: fixed; pointer-events: none; background: var(--surface); color: var(--ink);
+  border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; font-size: 12px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.12); display: none; z-index: 10; font-variant-numeric: tabular-nums;
+}
+.tip .row { display: flex; align-items: center; gap: 6px; }
+.tip .row b { min-width: 42px; text-align: right; }
+details { margin-top: 8px; font-size: 13px; }
+table { border-collapse: collapse; font-variant-numeric: tabular-nums; font-size: 12px; width: 100%; }
+th, td { padding: 3px 6px; text-align: right; border-bottom: 1px solid var(--grid); }
+th:first-child, td:first-child { text-align: left; }
+.tbl-wrap { overflow-x: auto; }
+footer { margin-top: 20px; color: var(--muted); font-size: 12px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>LeakSense</h1>
+  <p class="sub">Which pipe is leaking on the Hanoi network, from a few pressure sensors. Choose sensors on the map and a held-out case; the model ranks the 33 pipes that can leak.</p>
+
+  <div class="controls" role="group" aria-label="Prediction inputs">
+    <label class="f">Held-out case
+      <select id="case"></select>
+    </label>
+    <label class="f">Model
+      <select id="method"></select>
+    </label>
+    <label class="f">Sensors (k)
+      <input id="k" type="number" min="1" max="31" value="8">
+    </label>
+    <div class="seg" role="group" aria-label="Sensor set">
+      <button id="b-greedy" aria-pressed="true">Greedy placement</button>
+      <button id="b-coverage" aria-pressed="false">Coverage</button>
+      <button id="b-random" aria-pressed="false">Random</button>
+      <button id="b-clear" aria-pressed="false">Clear</button>
+    </div>
+  </div>
+
+  <div class="grid2">
+    <section class="card" aria-labelledby="map-h">
+      <h2 id="map-h">Network</h2>
+      <p class="note">Click a junction to add or remove a sensor. The layout is the network file's drawing coordinates, not to scale.</p>
+      <svg id="map" role="img" aria-label="Hanoi network map"></svg>
+      <div class="legend">
+        <span><i class="key dot" style="background:var(--s1)"></i>sensor</span>
+        <span><i class="key" style="border-color:var(--s1)"></i>predicted (rank 1, thick)</span>
+        <span><i class="key" style="border-color:var(--s1-soft)"></i>ranks 2&ndash;3</span>
+        <span><i class="key dash" style="border-color:var(--s2)"></i>true leak pipe</span>
+      </div>
+    </section>
+    <section class="card" aria-labelledby="pred-h" aria-live="polite">
+      <h2 id="pred-h">Prediction</h2>
+      <div id="status" class="status"></div>
+      <div id="summary"></div>
+      <ol id="rank" class="rank"></ol>
+      <p class="note" id="place-note" style="margin-top:10px"></p>
+    </section>
+  </div>
+
+  <div class="grid3">
+    <section class="card">
+      <div class="chart-head">
+        <div><h2>Top-3 accuracy vs sensors</h2><p class="note">Locked test, random sensor sets</p></div>
+        <div class="seg" role="group" aria-label="Leak size">
+          <button data-g="overall" aria-pressed="true">All</button>
+          <button data-g="leak_type=small" aria-pressed="false">Small</button>
+        </div>
+      </div>
+      <svg id="ladder" role="img" aria-label="Top-3 accuracy against number of sensors"></svg>
+      <div class="legend" id="ladder-legend"></div>
+      <details><summary>Table</summary><div class="tbl-wrap" id="ladder-table"></div></details>
+    </section>
+    <section class="card">
+      <div class="chart-head">
+        <div><h2>Placement</h2><p class="note" id="place-sub">Locked test, headline model</p></div>
+        <div class="seg" role="group" aria-label="Scorer">
+          <button data-s="model" aria-pressed="true">GAT</button>
+          <button data-s="sigmatch_all" aria-pressed="false">Sigmatch</button>
+        </div>
+      </div>
+      <svg id="placement" role="img" aria-label="Top-3 accuracy for placement methods"></svg>
+      <div class="legend" id="place-legend"></div>
+      <details><summary>Table</summary><div class="tbl-wrap" id="place-table"></div></details>
+    </section>
+    <section class="card">
+      <div class="chart-head">
+        <div><h2>Accuracy vs leak flow</h2><p class="note" id="flow-sub">Top-3 at k = 8, headline model</p></div>
+      </div>
+      <svg id="flow" role="img" aria-label="Top-3 accuracy by leak flow bin"></svg>
+      <details><summary>Table</summary><div class="tbl-wrap" id="flow-table"></div></details>
+    </section>
+  </div>
+
+  <footer id="prov"></footer>
+</main>
+<div class="tip" id="tip" role="tooltip"></div>
+
+<script>
+"use strict";
+const NS = "http://www.w3.org/2000/svg";
+const $ = (id) => document.getElementById(id);
+const state = { net: null, cases: [], curves: null, place: null, sensors: new Set(), mode: "greedy",
+  group: "overall", scorer: "model", seq: 0 };
+const NAMES = { gat_snode_noembed: "GAT + physics (headline)", sigmatch_all: "Signature match",
+  gat: "Plain GAT", mlp: "MLP", gbm: "GBM", maxdh: "Max |ΔH|", chance: "Chance", gat_snode: "GAT + physics, embed" };
+const LADDER_SHOW = [["gat_snode_noembed", "--s1"], ["sigmatch_all", "--s2"], ["gat", "--s3"], ["mlp", "--s4"]];
+
+function el(tag, attrs = {}, parent) {
+  const e = document.createElementNS(NS, tag);
+  for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+  if (parent) parent.appendChild(e);
+  return e;
+}
+function h(tag, text, parent, cls) {
+  const e = document.createElement(tag);
+  if (text != null) e.textContent = text;
+  if (cls) e.className = cls;
+  if (parent) parent.appendChild(e);
+  return e;
+}
+const pct = (v) => (v == null ? "–" : (100 * v).toFixed(1));
+async function api(path, opts) {
+  const r = await fetch(path, opts);
+  const body = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(body.detail ? JSON.stringify(body.detail) : r.statusText);
+  return body;
+}
+
+// ---------------------------------------------------------------- tooltip
+const tip = $("tip");
+function showTip(evt, rows, title) {
+  tip.replaceChildren();
+  if (title) h("div", title, tip).style.color = "var(--ink-2)";
+  for (const [color, value, label] of rows) {
+    const row = h("div", null, tip, "row");
+    const key = h("i", null, row, "key"); key.style.borderColor = color;
+    h("b", value, row); h("span", label, row);
+  }
+  tip.style.display = "block";
+  const x = Math.min(evt.clientX + 14, window.innerWidth - tip.offsetWidth - 8);
+  const y = Math.min(evt.clientY + 14, window.innerHeight - tip.offsetHeight - 8);
+  tip.style.left = x + "px"; tip.style.top = y + "px";
+}
+const hideTip = () => { tip.style.display = "none"; };
+
+// ---------------------------------------------------------------- map
+let mapGeo = null;
+function drawMap(pred) {
+  const svg = $("map"); svg.replaceChildren();
+  const { nodes, pipes } = state.net;
+  if (!mapGeo) {
+    const xs = nodes.map((n) => n.x), ys = nodes.map((n) => n.y);
+    const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+    const W = 640, pad = 22, s = (W - 2 * pad) / Math.max(x1 - x0, 1e-9);
+    const H = Math.max(260, (y1 - y0) * s + 2 * pad);
+    const pos = {};
+    for (const n of nodes) pos[n.id] = [pad + (n.x - x0) * s, H - pad - (n.y - y0) * s];
+    mapGeo = { W, H, pos };
+  }
+  const { W, H, pos } = mapGeo;
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  const rankOf = {};
+  if (pred) pred.ranking.forEach((r) => { rankOf[r.pipe] = r.rank; });
+  const truth = pred ? pred.true_pipe : null;
+  const gP = el("g", {}, svg), gL = el("g", {}, svg), gN = el("g", {}, svg);
+  for (const p of pipes) {
+    const [ax, ay] = pos[p.from], [bx, by] = pos[p.to];
+    const r = rankOf[p.id];
+    let color = p.leak_eligible ? "var(--pipe)" : "var(--pipe-off)", w = 2.5;
+    if (r === 1) { color = "var(--s1)"; w = 6; } else if (r && r <= 3) { color = "var(--s1-soft)"; w = 4.5; }
+    const line = el("line", { x1: ax, y1: ay, x2: bx, y2: by, stroke: color, "stroke-width": w, "stroke-linecap": "round" }, gP);
+    const hit = el("line", { x1: ax, y1: ay, x2: bx, y2: by, stroke: "transparent", "stroke-width": 14 }, gP);
+    hit.addEventListener("pointermove", (e) => showTip(e, [[color, p.id, `${Math.round(p.length_m)} m${r ? ", rank " + r : ""}`]], "Pipe"));
+    hit.addEventListener("pointerleave", hideTip);
+    if (p.id === truth) {
+      el("line", { x1: ax, y1: ay, x2: bx, y2: by, stroke: "var(--s2)", "stroke-width": 3, "stroke-dasharray": "6 4", "stroke-linecap": "round", "pointer-events": "none" }, gL);
+    }
+    if (r && r <= 3 || p.id === truth) {
+      const t = el("text", { x: (ax + bx) / 2 + 6, y: (ay + by) / 2 - 6, "font-size": 11 }, gL);
+      t.style.fill = "var(--ink)";
+      t.textContent = p.id === truth ? `${p.id} (true)` : `${p.id} #${r}`;
+    }
+  }
+  const sensorSet = new Set(state.net.sensors);
+  for (const n of nodes) {
+    const [x, y] = pos[n.id];
+    if (!sensorSet.has(n.id)) {
+      el("rect", { x: x - 6, y: y - 6, width: 12, height: 12, rx: 2, fill: "var(--muted)" }, gN);
+      const t = el("text", { x: x + 9, y: y + 4 }, gN); t.textContent = `reservoir ${n.id}`;
+      continue;
+    }
+    const on = state.sensors.has(n.id);
+    const g = el("g", { class: "map-node" + (on ? " on" : ""), tabindex: 0, role: "button",
+      "aria-pressed": on, "aria-label": `junction ${n.id}${on ? ", sensor" : ""}` }, gN);
+    el("circle", { cx: x, cy: y, r: 14, fill: "transparent" }, g);
+    el("circle", { cx: x, cy: y, r: on ? 6 : 4.5, class: "dot" }, g);
+    const t = el("text", { x: x + 7, y: y - 6 }, g); t.textContent = n.id;
+    const toggle = () => {
+      if (state.sensors.has(n.id)) state.sensors.delete(n.id); else state.sensors.add(n.id);
+      setMode("custom"); $("k").value = state.sensors.size; predict();
+    };
+    g.addEventListener("click", toggle);
+    g.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); } });
+  }
+}
+
+// ---------------------------------------------------------------- sensor sets
+function setMode(m) {
+  state.mode = m;
+  for (const id of ["greedy", "coverage", "random"]) $("b-" + id).setAttribute("aria-pressed", m === id);
+}
+function applySet() {
+  const k = Math.max(1, Math.min(31, parseInt($("k").value, 10) || 1));
+  $("k").value = k;
+  const sensors = state.net.sensors;
+  let ids;
+  if (state.mode === "greedy" || state.mode === "coverage") {
+    const order = state.place[state.mode + "_order"];
+    if (k > order.length) {
+      const rest = sensors.filter((s) => !order.includes(s));
+      ids = order.concat(rest).slice(0, k);  // past the saved order: fill in junction order
+    } else ids = order.slice(0, k);
+  } else if (state.mode === "random") {
+    const pool = sensors.slice();
+    for (let i = pool.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [pool[i], pool[j]] = [pool[j], pool[i]]; }
+    ids = pool.slice(0, k);
+  } else return;
+  state.sensors = new Set(ids);
+}
+async function placementNote() {
+  const k = state.sensors.size, note = $("place-note");
+  note.textContent = "";
+  if (state.mode !== "greedy" && state.mode !== "coverage") return;
+  if (!state.place.scored_ks.includes(k)) return;
+  const p = await api(`/placements?k=${k}`);
+  const s = p.scores.model && p.scores.model.overall;
+  if (!s) return;
+  note.textContent = `Locked test, k = ${k}, headline model: greedy set ${pct(s.greedy)}% top-3, coverage set ${pct(s.coverage)}%, random sets ${pct(s.random_mean)}% on average (p5–p95 ${pct(s.random_p5)}–${pct(s.random_p95)}).`;
+}
+
+// ---------------------------------------------------------------- prediction
+async function predict() {
+  const seq = ++state.seq;
+  const caseId = $("case").value;
+  if (state.sensors.size === 0) {
+    $("status").textContent = "Add at least one sensor.";
+    $("summary").replaceChildren(); $("rank").replaceChildren(); drawMap(null); return;
+  }
+  $("status").textContent = "Scoring…"; $("status").classList.remove("err");
+  try {
+    const out = await api("/predict", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ case_id: caseId, sensors: [...state.sensors], method: $("method").value, top: 5 }) });
+    if (seq !== state.seq) return;
+    $("status").textContent = "";
+    renderPrediction(out);
+    drawMap(out);
+    placementNote();
+  } catch (e) {
+    if (seq !== state.seq) return;
+    $("status").textContent = "Error: " + e.message; $("status").classList.add("err");
+  }
+}
+function renderPrediction(out) {
+  const s = $("summary"); s.replaceChildren();
+  const c = state.cases.find((x) => x.case_id === out.case_id);
+  const big = h("div", null, s);
+  h("span", out.true_rank === 1 ? "Found" : `Rank ${out.true_rank}`, big, "big");
+  h("p", `True leak pipe ${out.true_pipe} is ranked ${out.true_rank} of 33` +
+    (out.n_tied_with_true > 1 ? ` (tied with ${out.n_tied_with_true - 1} other)` : "") +
+    ` using ${out.k} sensor${out.k > 1 ? "s" : ""}. Top-ranked pipe is ${Math.round(out.top1_dist_m)} m along the pipes from the leak.`, s, "note");
+  if (c) h("p", `${c.leak_type} leak, ${c.leak_flow_lps != null ? c.leak_flow_lps.toFixed(0) + " L/s, " : ""}scenario ${c.scenario_id} (${c.kind}).`, s, "note");
+  const ol = $("rank"); ol.replaceChildren();
+  for (const r of out.ranking) {
+    const li = h("li", null, ol, r.pipe === out.true_pipe ? "true" : "");
+    h("span", "#" + r.rank, li, "r");
+    const name = h("span", "Pipe " + r.pipe, li);
+    if (r.pipe === out.true_pipe) h("span", "true leak", name, "tag");
+    h("span", r.pipe === out.true_pipe ? "0 m" : `${Math.round(r.dist_m)} m away`, li, "note");
+  }
+}
+
+// ---------------------------------------------------------------- charts
+function axes(svg, W, H, m, xs, xLabel, yTicks = [0, 0.25, 0.5, 0.75, 1]) {
+  const y = (v) => H - m.b - v * (H - m.t - m.b);
+  for (const t of yTicks) {
+    el("line", { x1: m.l, x2: W - m.r, y1: y(t), y2: y(t), stroke: t === 0 ? "var(--axis)" : "var(--grid)", "stroke-width": 1 }, svg);
+    const tx = el("text", { x: m.l - 6, y: y(t) + 4, "text-anchor": "end" }, svg); tx.textContent = Math.round(t * 100) + "%";
+  }
+  xs.forEach((lab, i) => {
+    const x = m.l + (i + 0.5) * (W - m.l - m.r) / xs.length;
+    const tx = el("text", { x, y: H - m.b + 16, "text-anchor": "middle" }, svg); tx.textContent = lab;
+  });
+  const xl = el("text", { x: (m.l + W - m.r) / 2, y: H - 4, "text-anchor": "middle" }, svg); xl.textContent = xLabel;
+  return y;
+}
+function lineChart(svg, xs, series, xLabel, band) {
+  svg.replaceChildren();
+  const W = 380, H = 250, m = { l: 40, r: 16, t: 10, b: 40 };
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  const y = axes(svg, W, H, m, xs, xLabel);
+  const step = (W - m.l - m.r) / xs.length;
+  const x = (i) => m.l + (i + 0.5) * step;
+  if (band) {
+    const pts = band.lo.map((v, i) => `${x(i)},${y(v)}`).concat(band.hi.map((v, i) => `${x(i)},${y(v)}`).reverse());
+    el("polygon", { points: pts.join(" "), fill: band.color, opacity: 0.18 }, svg);
+  }
+  for (const s of series) {
+    const d = s.values.map((v, i) => (v == null ? null : `${x(i)},${y(v)}`)).filter(Boolean);
+    el("polyline", { points: d.join(" "), fill: "none", stroke: s.color, "stroke-width": 2, "stroke-linejoin": "round",
+      "stroke-dasharray": s.dash || "" }, svg);
+  }
+  const cross = el("line", { y1: m.t, y2: H - m.b, stroke: "var(--muted)", "stroke-width": 1, visibility: "hidden" }, svg);
+  const dots = series.map((s) => el("circle", { r: 4, fill: s.color, stroke: "var(--surface)", "stroke-width": 2, visibility: "hidden" }, svg));
+  const hit = el("rect", { x: m.l, y: m.t, width: W - m.l - m.r, height: H - m.t - m.b, fill: "transparent" }, svg);
+  hit.addEventListener("pointermove", (e) => {
+    const r = svg.getBoundingClientRect();
+    const px = (e.clientX - r.left) * W / r.width;
+    const i = Math.max(0, Math.min(xs.length - 1, Math.floor((px - m.l) / step)));
+    cross.setAttribute("x1", x(i)); cross.setAttribute("x2", x(i)); cross.setAttribute("visibility", "visible");
+    series.forEach((s, j) => {
+      const v = s.values[i];
+      dots[j].setAttribute("visibility", v == null ? "hidden" : "visible");
+      if (v != null) { dots[j].setAttribute("cx", x(i)); dots[j].setAttribute("cy", y(v)); }
+    });
+    const rows = series.map((s) => [s.color, pct(s.values[i]) + "%", s.name]);
+    if (band) rows.push([band.color, `${pct(band.lo[i])}–${pct(band.hi[i])}%`, band.name]);
+    showTip(e, rows, `${xLabel} = ${xs[i]}`);
+  });
+  hit.addEventListener("pointerleave", () => { hideTip(); cross.setAttribute("visibility", "hidden"); dots.forEach((d) => d.setAttribute("visibility", "hidden")); });
+}
+function legend(box, items) {
+  box.replaceChildren();
+  for (const [color, name, dash] of items) {
+    const s = h("span", null, box);
+    const k = h("i", null, s, "key" + (dash ? " dash" : "")); k.style.borderColor = color;
+    s.appendChild(document.createTextNode(name));
+  }
+}
+function table(box, head, rows) {
+  const t = h("table", null, null);
+  const tr = h("tr", null, h("thead", null, t));
+  head.forEach((c) => h("th", c, tr));
+  const tb = h("tbody", null, t);
+  rows.forEach((r) => { const row = h("tr", null, tb); r.forEach((c) => h("td", c, row)); });
+  box.replaceChildren(t);
+}
+const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+
+function drawLadder() {
+  const cur = state.curves, ks = cur.ks.map(String);
+  const series = LADDER_SHOW.filter(([r]) => cur.ladder[r]).map(([r, c]) => ({
+    name: NAMES[r] || r, color: css(c), values: cur.ladder[r][state.group].map((p) => p.top3) }));
+  lineChart($("ladder"), ks, series, "sensors k");
+  legend($("ladder-legend"), series.map((s) => [s.color, s.name]));
+  const rungs = Object.keys(cur.ladder);
+  table($("ladder-table"), ["rung", ...ks], rungs.map((r) => [NAMES[r] || r, ...cur.ladder[r][state.group].map((p) => pct(p.top3))]));
+}
+function drawPlacement() {
+  const pl = state.curves.placement[state.scorer];
+  const ks = Object.keys(pl);
+  const g = (f) => ks.map((k) => (pl[k] && pl[k].overall ? pl[k].overall[f] : null));
+  const series = [
+    { name: "Greedy (learned)", color: css("--s1"), values: g("greedy") },
+    { name: "Coverage", color: css("--s2"), values: g("coverage") },
+    { name: "Random, mean", color: css("--muted"), values: g("random_mean"), dash: "4 3" },
+  ];
+  const band = { name: "Random p5–p95", color: css("--muted"), lo: g("random_p5"), hi: g("random_p95") };
+  lineChart($("placement"), ks, series, "sensors k", band);
+  legend($("place-legend"), series.map((s) => [s.color, s.name, s.dash]).concat([[css("--muted"), "band: random p5–p95"]]));
+  $("place-sub").textContent = `Locked test, scored by ${state.scorer === "model" ? "the headline GAT" : "signature match"}, all cases`;
+  table($("place-table"), ["k", "greedy", "coverage", "random", "p5–p95"], ks.map((k, i) => [k, pct(series[0].values[i]), pct(series[1].values[i]), pct(series[2].values[i]), `${pct(band.lo[i])}–${pct(band.hi[i])}`]));
+}
+function drawFlow() {
+  const lf = state.curves.leak_flow;
+  const svg = $("flow"); svg.replaceChildren();
+  if (!lf) return;
+  const key = Object.keys(lf.series).find((s) => s.startsWith("test ") && s.includes(state.curves.headline));
+  const bins = lf.series[key] || [];
+  const fmt = (v) => (v == null ? "∞" : Math.round(v));
+  const labs = bins.map((b) => `${fmt(b.lo)}–${fmt(b.hi)}`);
+  const W = 380, H = 250, m = { l: 40, r: 16, t: 10, b: 40 };
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  const y = axes(svg, W, H, m, labs, "leak flow (L/s)");
+  const step = (W - m.l - m.r) / bins.length, bw = Math.min(36, step - 6);
+  bins.forEach((b, i) => {
+    const x = m.l + (i + 0.5) * step - bw / 2, top = y(b.top3), base = y(0);
+    const hgt = Math.max(0, base - top), r = Math.min(4, hgt);
+    const d = `M${x},${base} V${top + r} Q${x},${top} ${x + r},${top} H${x + bw - r} Q${x + bw},${top} ${x + bw},${top + r} V${base} Z`;
+    const bar = el("path", { d, fill: css("--s1") }, svg);
+    const hit = el("rect", { x: m.l + i * step, y: m.t, width: step, height: H - m.t - m.b, fill: "transparent", tabindex: 0 }, svg);
+    const show = (e) => { bar.setAttribute("opacity", 0.8); showTip(e, [[css("--s1"), pct(b.top3) + "%", `top-3, n = ${b.n}`]], `${labs[i]} L/s`); };
+    hit.addEventListener("pointermove", show);
+    hit.addEventListener("pointerleave", () => { bar.setAttribute("opacity", 1); hideTip(); });
+  });
+  $("flow-sub").textContent = `Top-3 at k = ${lf.k}, headline model, random sets; locked test`;
+  table($("flow-table"), ["flow (L/s)", "n", "top-3"], bins.map((b, i) => [labs[i], b.n, pct(b.top3)]));
+}
+
+// ---------------------------------------------------------------- init
+function segment(attr, key, draw) {
+  document.querySelectorAll(`[data-${attr}]`).forEach((b) => b.addEventListener("click", () => {
+    document.querySelectorAll(`[data-${attr}]`).forEach((x) => x.setAttribute("aria-pressed", x === b));
+    state[key] = b.dataset[attr]; draw();
+  }));
+}
+async function init() {
+  try {
+    const [net, cases, curves, place] = await Promise.all([api("/network"), api("/cases"), api("/curves"), api("/placements")]);
+    Object.assign(state, { net, cases: cases.cases, curves, place });
+  } catch (e) {
+    $("status").textContent = "Could not load data: " + e.message; $("status").classList.add("err"); return;
+  }
+  const sel = $("case");
+  for (const c of state.cases) {
+    const o = h("option", `${c.case_id} · ${c.leak_type} · pipe ${c.pipe}`, sel); o.value = c.case_id;
+  }
+  const ms = $("method");
+  for (const [v, n] of [[state.curves.headline, "GAT + physics (headline)"], ["sigmatch_all", "Signature match (physics only)"]]) {
+    const o = h("option", n, ms); o.value = v;
+  }
+  $("k").value = state.curves.headline_k || 8;
+  for (const m of ["greedy", "coverage", "random"]) $("b-" + m).addEventListener("click", () => { setMode(m); applySet(); predict(); });
+  $("b-clear").addEventListener("click", () => { setMode("custom"); state.sensors = new Set(); predict(); });
+  $("k").addEventListener("change", () => { if (state.mode === "custom") setMode("greedy"); applySet(); predict(); });
+  sel.addEventListener("change", predict); ms.addEventListener("change", predict);
+  segment("g", "group", drawLadder); segment("s", "scorer", drawPlacement);
+  applySet(); drawLadder(); drawPlacement(); drawFlow(); predict();
+  const p = state.curves.provenance, t = state.curves.test_set;
+  $("prov").textContent = `Locked test: ${t ? t.n_cases : "?"} held-out cases. Curves from ${p.source}, generated ${p.generated_at}, commit ${p.commit}, data manifest ${p.data_manifest}. Predictions come from the saved model on cached features.`;
+  window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { drawLadder(); drawPlacement(); drawFlow(); });
+}
+init();
+</script>
+</body>
+</html>

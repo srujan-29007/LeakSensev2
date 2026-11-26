@@ -59,3 +59,62 @@ def cli_env(tmp_path, monkeypatch):
         str(tmp_path / "cfg.yaml"),
     ]
     return tmp_path, common
+
+
+PLACE = """model:
+  kind: gat
+  max_epochs: 2
+  hidden: 8
+  heads: 2
+  layers: 2
+  node_embed: 0
+  physics: node
+  val_frac: 0.0
+  num_threads: 1
+placement:
+  model_label: toy
+  k: [1, 2]
+  random: 3
+"""
+
+
+@pytest.fixture
+def place_env(cli_env):
+    from leaksense.cli import main
+
+    tmp_path, common = cli_env
+    assert main(["build-features", *common, "--quiet"]) == 0
+    sens = ["build-sensitivity", *common, "--splits", str(tmp_path / "splits.json")]
+    assert main([*sens, "--out", str(tmp_path / "sens"), "--quiet"]) == 0
+    cfg = tmp_path / "cfg.yaml"
+    cfg.write_text(cfg.read_text() + PLACE)
+    args = ["place", "--bootstrap", "20", "--splits", str(tmp_path / "splits.json")]
+    args += ["--reports-dir", str(tmp_path / "rep"), "--runs-dir", str(tmp_path / "runs")]
+    args += [*(common[:4] + common[6:])]
+    return tmp_path, args
+
+
+FINAL = """model:
+  kind: gat
+  max_epochs: 2
+  hidden: 8
+  heads: 2
+  layers: 2
+  node_embed: 0
+  physics: node
+  val_frac: 0.0
+  num_threads: 1
+final:
+  ks: [1, 2, 4]
+  draws: 3
+  headline_k: 2
+  nonlearned: [chance, sigmatch_all]
+  learned:
+    gat_snode: {seeds: [0, 1]}
+    gat_plain: {seeds: [0], overrides: {physics: none}}
+  headline: gat_snode
+  plain: gat_plain
+  placement: {runs: RUNS, name: placement}
+  fixed_ks: [2]
+  cv_reports: REP
+"""

@@ -40,7 +40,22 @@ def add_parsers(sub) -> None:
     from leaksense.models.baselines import MODELS
 
     e = sub.add_parser("eval", help="score a model on the CV cases (reports/<name>.json, .md)")
-    e.add_argument("--model", required=True, choices=sorted(MODELS))
+    e.add_argument("--model", choices=sorted(MODELS), help="localisation model (task localize)")
+    e.add_argument("--task", choices=["localize", "detect"], default="localize", help="detect: M15")
+    e.add_argument("--stress", choices=["overlap"], help="M15 overlapping-leak stress test")
+    e.add_argument("--cases", help="case index for --stress (default: artifacts cases.parquet)")
+    e.add_argument("--fold", type=int, help="--stress: run one fold's units only (no report)")
+    e.add_argument("--runs-dir", help="--stress: per-fold units (default reports/raw/overlap)")
+    e.add_argument(
+        "--model-config",
+        default="configs/final.yaml",
+        help="--stress: config whose final.headline model is refit per fold",
+    )
+    e.add_argument(
+        "--placement-runs",
+        default="reports/raw/placement",
+        help="M11 runs with the final greedy order (M15 sensor sets)",
+    )
     add_common(e)
     e.set_defaults(func=cmd_eval)
 
@@ -159,6 +174,16 @@ def run_and_report(
 def cmd_eval(args: argparse.Namespace) -> int:
     from leaksense.models.baselines import MODELS, NEEDS_SENSITIVITY
 
+    if args.stress == "overlap":
+        from leaksense.stretch_cmds import cmd_overlap
+
+        return cmd_overlap(args)
+    if args.task == "detect":
+        from leaksense.stretch_cmds import cmd_detect
+
+        return cmd_detect(args)
+    if not args.model:
+        raise ConfigError("--model is required for --task localize")
     t0 = time.perf_counter()
     inp = load_inputs(args)
     resources = {}

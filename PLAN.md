@@ -462,7 +462,7 @@ notebooks/kaggle_run.ipynb     # calls the CLI only, no logic
   - `httpx` added as a dev dependency for the FastAPI TestClient.
 - **Verified — DONE:** `pytest tests/test_api.py` passes (4 tests on synthetic data, including a refusal when the refit differs from M13). On the real data, `export-serve` refit `gat_snode_noembed` in 6,386 s, and it matched the M13 unit on all 21 sensor sets at k = 8 (bundle 685 kB). `leaksense serve`: every endpoint answers; `/placements?k=8` gives greedy 88.6 / coverage 81.4 / random mean 77.0 (the same as FINAL.md); `/predict` for S006-solo with the k = 8 greedy set ranks the true pipe 14 first. The page was checked in headless Chrome: map, prediction and all three charts render.
 
-### M15: Stretch goals (detection, overlapping-leak stress test)
+### M15: Stretch goals (detection, overlapping-leak stress test) — DONE
 - **Detection.**
   - Scenario-1 is the only scenario with no leak at all. So the no-leak class comes from leak-free stretches of the leak scenarios, excluding baseline windows and a buffer before each leak starts.
   - Ground truth is the per-scenario `Labels.csv`, which is the union of active leaks (D7).
@@ -473,3 +473,42 @@ notebooks/kaggle_run.ipynb     # calls the CLI only, no logic
   - Check whether either leak appears in the top-k.
   - Report the 6 scenarios where both leaks are on the same pipe separately, because "either leak in top-k" is trivial for them.
 - **Verify:** `uv run leaksense eval --task detect` and `uv run leaksense eval --stress overlap`.
+- **Design, fixed before any result (2026-11-27):**
+  - **Scope:** CV scenarios only (the 5 folds). The locked test is not used. Scenarios outside the splits (Scenario-1 and the two-leak scenarios with no solo case) are counted, not scored.
+  - **Leak scan (first):** one pass over the CV scenarios' `Leaks/` files and `Labels.csv` gives every leak's start, end, pipe and flow, plus a ramp check. For each leak: flow at the first step / median flow, and the number of steps until the flow first reaches 95% of the median. Leak flow is used only for this check and for reporting.
+  - **Detection statistic (non-learned, online):** a daily window ending at step t (W = 48 steps) is compared with a rolling reference: the 14 days right before the window, with a `tod_weekday` slot profile (the M4 method). ΔH is the window mean per junction. Each junction's ΔH is scaled by its leak-free spread σ_j, estimated on the training folds' negative windows. Two one-sided scores (a leak lowers pressure): `max` = max over sensed junctions of −ΔH_j/σ_j, and `mean` = the mean of −ΔH_j/σ_j over sensed junctions.
+  - **Samples:**
+    - A negative window and its reference are entirely leak-free (`Labels.csv`) and end at least 1 day (48 steps) before any leak starts. This buffer replaces "excluding baseline windows": with a rolling reference, no window is ever its own reference. Up to 20 negative days per scenario are drawn with a fixed seed, on day boundaries.
+    - The positive for a leak is the window covering its first 24 h, used only if the 14 days before the leak are leak-free.
+  - **Thresholds:** per sensor set, the (1 − α) quantile of the training folds' negative scores, for α = 1% and 5% of daily windows. Each fold is scored out of fold.
+  - **Detection metrics:**
+    - false-positive rate achieved on held-out negatives
+    - detection rate (positives above the threshold) and ROC AUC, overall, by leak type and by leak-flow tercile
+    - CIs by bootstrapping over scenarios
+  - **Time to detect** is reported only if the ramp check shows that flow does not start at full size. If it does start at full size, the delay mostly reflects window length vs. leak size, so it is reported as a secondary number: windows ending every hour from 1 to 24 h after the start, reference kept clean, first crossing of the α = 1% threshold.
+  - **Sensor sets:** k ∈ {2, 4, 8, 16, 31}, with 20 random sets per k (the harness seeds) and the M11 final greedy order.
+  - **Overlap stress test:**
+    - **Counting:** first count, in the CV two-leak scenarios, the periods where both leaks are active and how long they last.
+    - **Windows:** ΔH windows come from the first 7 days of the overlap, against the case's M3/M4 baseline (the same baseline rows and profile as its solo case). Overlaps under one window (48 steps) give no windows and are counted.
+    - **Models:**
+      - `sigmatch_all`.
+      - The headline model `gat_snode_noembed`, seed 0, refit per CV fold on that fold's training cases. Each overlap case is scored by the model that did not see its scenario.
+    - **Metrics per case:** tie-aware top-3 hit for the first leak, the second leak, either, and both (k ∈ {4, 8, 16, 31}, 20 random sets). For reference, the same scenarios' solo-case top-3 from M10 is shown beside them. The scenarios where both leaks are on the same pipe are reported separately.
+- **Verified — DONE** (`reports/detection.md`, `reports/overlap.md`; CV scenarios only, the locked test not read):
+  - **Leak scan / ramp:** 628 leaks in the 419 CV scenarios. 588 (93.6%) are at 95% of their median flow from the first step; the p95 of steps to 95% is 1, and the median flow coefficient of variation is 0.020. That is just under the fixed 95% rule, so time to detect is reported; for nearly all leaks it measures how fast the window fills, not a growing leak.
+  - **Detection** (`max` statistic, α = 1% of daily windows; 8,253 negatives, 487 positives):
+    - The achieved false-positive rate is 1.0% at every k.
+    - At k = 8 the detection rate is 80.3 [76.6, 83.8] on the greedy set (80.1 random); AUC is 0.953.
+    - Small leaks are detected 61.9% of the time, big ones 100%. By leak-flow tercile: T1 46.7, T2 95.1, T3 100.
+    - The rate barely depends on k: 76.6 at k = 2 vs 83.2 at k = 31 (greedy).
+    - Within 24 h, 81.5% of leaks are detected at k = 8 (greedy), with a median of 2 h when detected.
+    - The `mean` statistic is a little worse (76.0 at k = 8).
+  - **Overlap:**
+    - **Counts:** 209 CV two-leak scenarios. 107 never have both leaks active, 3 overlap for under a day, and 99 are scored (3 of them same-pipe; 6 same-pipe in the CV scenarios).
+    - **Fold models:** the per-fold refits match the M10 runs exactly on the solo cases (max difference 0.0000).
+    - **Headline, k = 8, random sets, different pipes (n = 96):**
+      - first leak in the top 3: 44.4 [36.9, 51.9]; second leak: 37.4
+      - either leak: 75.4 [70.7, 80.0], about the solo-case 76.5; both leaks: 6.4
+    - **Reading:** with two leaks active, the model usually points at one of them, about as often as it finds a lone leak. It rarely ranks both in the top 3, and the first leak's hit rate falls 32 points against its solo case.
+    - **Caveat:** the baseline is a median 62.5 days from the overlap, against ≤ 7 days for the solo case, so drift adds to the drop.
+    - **`sigmatch_all`:** either 70.0 at k = 8.

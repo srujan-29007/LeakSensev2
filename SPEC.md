@@ -90,6 +90,11 @@ A single leak has already been detected on the Hanoi water network (LeakDB). Pre
 
 - Localizing simultaneous leaks. Overlap periods of two-leak scenarios are only a stretch-goal stress test.
 - Leak detection. This is a stretch milestone and does not count toward "done".
+  - *M15 definitions (stretch, CV only):*
+    - A detection sample is a daily window (48 steps) against the 14 days right before it, using a rolling `tod_weekday` profile.
+    - Negatives are leak-free windows, with a leak-free reference, that end at least 1 day before any leak. A leak's positive is its first 24 h, and needs 14 leak-free days before it.
+    - False-positive rate is per daily window, with the threshold set on the training folds' negatives.
+    - Overlap hits are tie-aware top-3 for each leak of the both-active period, against the solo case's baseline.
 - Networks other than Hanoi.
 - Flow sensors and AMR. Inputs are pressure only.
 - EPANET re-ranking.

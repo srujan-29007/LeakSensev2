@@ -271,9 +271,12 @@ function drawMap(pred) {
       el("line", { x1: ax, y1: ay, x2: bx, y2: by, stroke: "var(--s2)", "stroke-width": 3, "stroke-dasharray": "6 4", "stroke-linecap": "round", "pointer-events": "none" }, gL);
     }
     if (r && r <= 3 || p.id === truth) {
-      const t = el("text", { x: (ax + bx) / 2 + 6, y: (ay + by) / 2 - 6, "font-size": 11 }, gL);
+      // junction labels sit above-right of a node, so pipe labels go below (or left of) the pipe
+      const flat = Math.abs(bx - ax) >= Math.abs(by - ay), mx = (ax + bx) / 2, my = (ay + by) / 2;
+      const t = el("text", flat ? { x: mx, y: my + 17, "text-anchor": "middle", "font-size": 11 }
+        : { x: mx - 9, y: my + 4, "text-anchor": "end", "font-size": 11 }, gL);
       t.style.fill = "var(--ink)";
-      t.textContent = p.id === truth ? `${p.id} (true)` : `${p.id} #${r}`;
+      t.textContent = `${p.id}${r ? " #" + r : ""}${p.id === truth ? " (true)" : ""}`;
     }
   }
   const sensorSet = new Set(state.net.sensors);

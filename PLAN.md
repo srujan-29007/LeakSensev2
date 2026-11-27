@@ -442,7 +442,7 @@ notebooks/kaggle_run.ipynb     # calls the CLI only, no logic
   - **H5 (big-leak part): no.** Big-leak top-3 is 85.6 at k = 8 and reaches 95.1 only at k = 12. Top-3 at k = 8 rises from about 64 (leak flow under 137 L/s) to about 85 above it.
   - The post hoc model choice is checked: the rule pick `gat_snode` scores 71.8 at k = 8 (small 62.8), below the headline by +5.8 [+2.2, +9.2] paired.
 
-### M14: API and single page
+### M14: API and single page — DONE
 - FastAPI endpoints:
   - `/network`
   - `/placements?k=`
@@ -460,6 +460,7 @@ notebooks/kaggle_run.ipynb     # calls the CLI only, no logic
   - **`leaksense serve`** (`leaksense.api`): `/network`, `/placements?k=`, `/cases` (the 70 locked-test cases), `POST /predict` (case + sensor ids + model → ranked pipes, true-pipe rank, distance along pipes), `/curves` (ladder, placement and leak-flow curves from `final.json`), and `/` → `web/index.html`.
   - **`web/index.html`**: a vanilla JS/SVG page. It has a clickable network map (sensors, the top-3 predicted pipes, the true pipe), presets for the greedy, coverage and random sets, and the ranked pipes. It also shows three charts with table views: the ladder top-3 vs k, placement vs random p5–p95, and top-3 by leak flow.
   - `httpx` added as a dev dependency for the FastAPI TestClient.
+- **Verified — DONE:** `pytest tests/test_api.py` passes (4 tests on synthetic data, including a refusal when the refit differs from M13). On the real data, `export-serve` refit `gat_snode_noembed` in 6,386 s, and it matched the M13 unit on all 21 sensor sets at k = 8 (bundle 685 kB). `leaksense serve`: every endpoint answers; `/placements?k=8` gives greedy 88.6 / coverage 81.4 / random mean 77.0 (the same as FINAL.md); `/predict` for S006-solo with the k = 8 greedy set ranks the true pipe 14 first. The page was checked in headless Chrome: map, prediction and all three charts render.
 
 ### M15: Stretch goals (detection, overlapping-leak stress test)
 - **Detection.**
